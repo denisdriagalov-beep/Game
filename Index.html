@@ -1,0 +1,873 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0a0e14">
+<title>Тихий удар / Стальной заслон</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{width:100%;height:100%;overflow:hidden;background:#0a0e14;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+    touch-action:none;user-select:none;-webkit-user-select:none;
+    -webkit-touch-callout:none;overscroll-behavior:none}
+  canvas{display:block;position:absolute;top:0;left:0;touch-action:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+'use strict';
+
+/* ============================================================
+   КОНСТАНТЫ МИРА
+   ============================================================ */
+const WORLD_W = 800;
+const WORLD_H = 1400;
+const PLACE_MARGIN_X = 50;
+const PLACE_MIN_Y = 280;
+const PLACE_MAX_Y = WORLD_H - 50;
+const PLACE_MIN_DIST = 130;
+
+/* ============================================================
+   CANVAS / МАСШТАБ
+   ============================================================ */
+const cvs = document.getElementById('c');
+const ctx = cvs.getContext('2d');
+let W = 0, H = 0, scale = 1, ox = 0, oy = 0;
+
+function resize() {
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = window.innerWidth;
+  H = window.innerHeight;
+  cvs.width  = Math.floor(W * dpr);
+  cvs.height = Math.floor(H * dpr);
+  cvs.style.width  = W + 'px';
+  cvs.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  scale = Math.min(W / WORLD_W, H / WORLD_H);
+  ox = (W - WORLD_W * scale) / 2;
+  oy = (H - WORLD_H * scale) / 2;
+}
+window.addEventListener('resize', resize);
+window.addEventListener('orientationchange', () => setTimeout(resize, 120));
+
+const w2s = (x, y) => ({ x: x * scale + ox, y: y * scale + oy });
+const s2w = (x, y) => ({ x: (x - ox) / scale, y: (y - oy) / scale });
+
+/* ============================================================
+   УТИЛИТЫ
+   ============================================================ */
+const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
+const rand  = (a, b) => a + Math.random() * (b - a);
+const now   = () => performance.now();
+
+function roundRect(c, x, y, w, h, r) {
+  c.beginPath();
+  c.moveTo(x + r, y);
+  c.arcTo(x + w, y,     x + w, y + h, r);
+  c.arcTo(x + w, y + h, x,     y + h, r);
+  c.arcTo(x,     y + h, x,     y,     r);
+  c.arcTo(x,     y,     x + w, y,     r);
+  c.closePath();
+}
+
+/* ============================================================
+   СУЩНОСТИ
+   ============================================================ */
+class Particle {
+  constructor(x, y, vx, vy, life, color, size) {
+    this.x = x; this.y = y;
+    this.vx = vx; this.vy = vy;
+    this.life = life; this.maxLife = life;
+    this.color = color; this.size = size || 3;
+  }
+  update(dt) {
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    this.vx *= 0.95;
+    this.vy *= 0.95;
+    this.life -= dt;
+  }
+  get dead() { return this.life <= 0; }
+}
+
+class Tracer {
+  constructor(x1, y1, x2, y2, color) {
+    this.x1 = x1; this.y1 = y1;
+    this.x2 = x2; this.y2 = y2;
+    this.life = 0.14; this.maxLife = 0.14;
+    this.color = color || '#ffd24a';
+  }
+  update(dt) { this.life -= dt; }
+  get dead() { return this.life <= 0; }
+}
+
+class Drone {
+  constructor(x, y) {
+    this.x = x; this.y = y;
+    this.wx = x; this.wy = y;
+    this.hp = 30; this.maxHp = 30;
+    this.speed = 115;
+    this.radius = 14;
+    this.damage = 25;
+    this.alive = true;
+    this.angle = -Math.PI / 2;
+    this.hitFlash = 0;
+    this.bob = Math.random() * Math.PI * 2;
+  }
+  update(dt) {
+    if (!this.alive) return;
+    this.bob += dt * 6;
+    const dx = this.wx - this.x;
+    const dy = this.wy - this.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 3) {
+      const step = Math.min(dist, this.speed * dt);
+      const nx = dx / dist, ny = dy / dist;
+      this.x += nx * step;
+      this.y += ny * step;
+      const ta = Math.atan2(ny, nx);
+      let da = ta - this.angle;
+      while (da >  Math.PI) da -= Math.PI * 2;
+      while (da < -Math.PI) da += Math.PI * 2;
+      this.angle += da * Math.min(1, dt * 8);
+    }
+    if (this.hitFlash > 0) this.hitFlash = Math.max(0, this.hitFlash - dt);
+  }
+}
+
+class Turret {
+  constructor(x, y, opts = {}) {
+    this.x = x; this.y = y;
+    this.range = opts.range || 200;
+    this.fireRate = opts.fireRate || 2.5;
+    this.damage = opts.damage || 15;
+    this.cooldown = 0;
+    this.alive = true;
+    this.angle = -Math.PI / 2;
+    this.maxCooldown = 1 / this.fireRate;
+  }
+  canFire() { return this.cooldown <= 0; }
+  markFired() { this.cooldown = this.maxCooldown; }
+  update(dt) { if (this.cooldown > 0) this.cooldown = Math.max(0, this.cooldown - dt); }
+  inRange(x, y) { return Math.hypot(x - this.x, y - this.y) <= this.range; }
+  aimAt(x, y) { this.angle = Math.atan2(y - this.y, x - this.x); }
+}
+
+/* ============================================================
+   ГЛОБАЛЬНОЕ СОСТОЯНИЕ
+   ============================================================ */
+const G = {
+  screen: 'menu',           // menu | play | end
+  side: null,               // attack | defense
+  result: null,             // win | lose
+  drones: [],
+  turrets: [],
+  tracers: [],
+  particles: [],
+  target: null,
+  time: 0,
+  // defense:
+  spawnQueue: 0,
+  spawnTimer: 0,
+  spawnInterval: 2.4,
+  placement: { active: false, placed: 0, required: 3 },
+  // hud:
+  message: '',
+  messageTime: 0,
+  screenFlash: 0,
+};
+
+/* ============================================================
+   ИНИЦИАЛИЗАЦИЯ ПАРТИИ
+   ============================================================ */
+function setMessage(text, t) { G.message = text; G.messageTime = t || 3; }
+
+function resetGame(side) {
+  G.side = side;
+  G.screen = 'play';
+  G.result = null;
+  G.drones = [];
+  G.turrets = [];
+  G.tracers = [];
+  G.particles = [];
+  G.time = 0;
+  G.spawnQueue = 0;
+  G.spawnTimer = 0;
+  G.message = '';
+  G.messageTime = 0;
+  G.screenFlash = 0;
+
+  if (side === 'attack') {
+    // 4 ударных БПЛА игрока
+    for (let i = 0; i < 4; i++) {
+      const d = new Drone(140 + i * 170, 1250);
+      G.drones.push(d);
+    }
+    // 3 вражеские турели (МОГ)
+    G.turrets.push(new Turret(180, 950, { range: 200, fireRate: 2.2, damage: 15 }));
+    G.turrets.push(new Turret(620, 800, { range: 200, fireRate: 2.2, damage: 15 }));
+    G.turrets.push(new Turret(400, 550, { range: 200, fireRate: 2.2, damage: 15 }));
+    // Цель — инфраструктурный объект
+    G.target = { x: 400, y: 180, radius: 70, hp: 75, maxHp: 75 };
+    setMessage('Тапните по карте — все БПЛА летят туда', 5);
+  } else {
+    G.placement = { active: true, placed: 0, required: 3 };
+    G.target = { x: 400, y: 180, radius: 70, hp: 100, maxHp: 100 };
+    G.spawnQueue = 6;
+    setMessage('Разместите 3 турели (1/3)', 5);
+  }
+}
+
+function spawnEnemyDrone() {
+  const x = rand(90, WORLD_W - 90);
+  const d = new Drone(x, 1330);
+  d.wx = G.target.x + rand(-70, 70);
+  d.wy = G.target.y + rand(-20, 20);
+  d.speed = rand(75, 110);
+  d.hp = 25; d.maxHp = 25;
+  d.damage = 20;
+  G.drones.push(d);
+}
+
+/* ============================================================
+   БОЕВАЯ ЛОГИКА
+   ============================================================ */
+function damageDrone(d, dmg) {
+  if (!d.alive) return;
+  d.hp -= dmg;
+  d.hitFlash = 0.1;
+  if (d.hp <= 0) {
+    d.alive = false;
+    for (let i = 0; i < 22; i++) {
+      G.particles.push(new Particle(
+        d.x, d.y,
+        rand(-260, 260), rand(-260, 260),
+        rand(0.6, 1.1), i % 2 ? '#ffaa33' : '#ff6a22', 4
+      ));
+    }
+  }
+}
+
+function fireTurretAt(t, tx, ty) {
+  t.markFired();
+  t.aimAt(tx, ty);
+  G.tracers.push(new Tracer(t.x, t.y, tx, ty));
+  for (let i = 0; i < 3; i++) {
+    G.particles.push(new Particle(
+      t.x + Math.cos(t.angle) * 20, t.y + Math.sin(t.angle) * 20,
+      rand(-60, 60), rand(-60, 60), 0.25, '#ffd24a', 2
+    ));
+  }
+}
+
+function updateAttack(dt) {
+  for (const d of G.drones) {
+    if (!d.alive) continue;
+    d.update(dt);
+    // Турели авто-огнём бьют по ближайшему БПЛА в радиусе
+    for (const t of G.turrets) {
+      if (!t.alive || !t.canFire()) continue;
+      if (!t.inRange(d.x, d.y)) continue;
+      fireTurretAt(t, d.x, d.y);
+      damageDrone(d, t.damage);
+      if (!d.alive) break;
+    }
+    // Достижение цели
+    if (d.alive && G.target) {
+      const dist = Math.hypot(G.target.x - d.x, G.target.y - d.y);
+      if (dist < G.target.radius + d.radius) {
+        G.target.hp -= d.damage;
+        d.alive = false;
+        G.screenFlash = 0.25;
+        for (let i = 0; i < 50; i++) {
+          G.particles.push(new Particle(
+            d.x, d.y,
+            rand(-420, 420), rand(-420, 420),
+            rand(0.8, 1.6), i % 3 === 0 ? '#ffcc33' : (i % 3 === 1 ? '#ff5522' : '#ffffff'), 5
+          ));
+        }
+      }
+    }
+  }
+  // Проверка исхода
+  if (G.target.hp <= 0) {
+    G.screen = 'end';
+    G.result = 'win';
+  } else if (G.drones.every(d => !d.alive)) {
+    G.screen = 'end';
+    G.result = 'lose';
+  }
+}
+
+function updateDefense(dt) {
+  if (G.placement.active) {
+    // Спавн не идёт, пока идёт расстановка
+    return;
+  }
+  // Волны
+  if (G.spawnQueue > 0) {
+    G.spawnTimer -= dt;
+    if (G.spawnTimer <= 0) {
+      spawnEnemyDrone();
+      G.spawnQueue--;
+      G.spawnTimer = G.spawnInterval;
+      if (G.spawnQueue === 0) setMessage('Последняя волна!', 2);
+    }
+  }
+  // Движение и урон по объекту
+  for (const d of G.drones) {
+    if (!d.alive) continue;
+    d.update(dt);
+    if (G.target) {
+      const dist = Math.hypot(G.target.x - d.x, G.target.y - d.y);
+      if (dist < G.target.radius + d.radius) {
+        G.target.hp -= d.damage;
+        d.alive = false;
+        G.screenFlash = 0.25;
+        for (let i = 0; i < 35; i++) {
+          G.particles.push(new Particle(
+            d.x, d.y,
+            rand(-320, 320), rand(-320, 320),
+            rand(0.7, 1.3), i % 2 ? '#ff5522' : '#ffcc33', 5
+          ));
+        }
+      }
+    }
+  }
+  // Проверка исхода
+  if (G.target.hp <= 0) {
+    G.screen = 'end';
+    G.result = 'lose';
+  } else if (G.spawnQueue === 0 && G.drones.every(d => !d.alive)) {
+    G.screen = 'end';
+    G.result = 'win';
+  }
+}
+
+function update(dt) {
+  // Всегда обновляем трассеры/партиклы, даже в конце партии (для красоты)
+  for (let i = G.tracers.length - 1; i >= 0; i--) {
+    G.tracers[i].update(dt);
+    if (G.tracers[i].dead) G.tracers.splice(i, 1);
+  }
+  for (let i = G.particles.length - 1; i >= 0; i--) {
+    G.particles[i].update(dt);
+    if (G.particles[i].dead) G.particles.splice(i, 1);
+  }
+  for (const t of G.turrets) t.update(dt);
+  if (G.screenFlash > 0) G.screenFlash = Math.max(0, G.screenFlash - dt);
+
+  if (G.screen !== 'play') return;
+  G.time += dt;
+  if (G.messageTime > 0) G.messageTime = Math.max(0, G.messageTime - dt);
+
+  if (G.side === 'attack') updateAttack(dt);
+  else                     updateDefense(dt);
+}
+
+/* ============================================================
+   ДЕЙСТВИЯ ИГРОКА
+   ============================================================ */
+function tryPlaceTurret(x, y) {
+  if (x < PLACE_MARGIN_X || x > WORLD_W - PLACE_MARGIN_X) return;
+  if (y < PLACE_MIN_Y || y > PLACE_MAX_Y) return;
+  for (const t of G.turrets) {
+    if (Math.hypot(t.x - x, t.y - y) < PLACE_MIN_DIST) {
+      setMessage('Слишком близко к другой турели', 1.6);
+      return;
+    }
+  }
+  G.turrets.push(new Turret(x, y, { range: 200, fireRate: 2.5, damage: 15 }));
+  G.placement.placed++;
+  if (G.placement.placed >= G.placement.required) {
+    G.placement.active = false;
+    setMessage('Оборона готова! Цели приближаются', 3);
+    G.spawnTimer = 1.8;
+  } else {
+    setMessage(`Разместите турели (${G.placement.placed + 1}/${G.placement.required})`, 4);
+  }
+}
+
+function fireAllTurrets() {
+  // Каждая турель бьёт по ближайшему БПЛА в радиусе
+  for (const t of G.turrets) {
+    if (!t.alive || !t.canFire()) continue;
+    let best = null, bestDist = Infinity;
+    for (const d of G.drones) {
+      if (!d.alive) continue;
+      const dd = Math.hypot(t.x - d.x, t.y - d.y);
+      if (dd <= t.range && dd < bestDist) {
+        bestDist = dd; best = d;
+      }
+    }
+    if (!best) continue;
+    fireTurretAt(t, best.x, best.y);
+    damageDrone(best, t.damage);
+  }
+}
+
+function setAttackWaypoint(wx, wy) {
+  const offsets = [[-40, 0], [0, -22], [40, 0], [0, 22]];
+  for (let i = 0; i < G.drones.length; i++) {
+    const d = G.drones[i];
+    if (!d.alive) continue;
+    d.wx = clamp(wx + offsets[i][0], 20, WORLD_W - 20);
+    d.wy = clamp(wy + offsets[i][1], 20, WORLD_H - 20);
+  }
+}
+
+function handleTap(clientX, clientY) {
+  if (G.screen === 'menu') {
+    const bw = Math.min(360, W * 0.82);
+    const bh = 76;
+    const bx = (W - bw) / 2;
+    const by1 = H * 0.50;
+    const by2 = by1 + bh + 26;
+    if (clientX >= bx && clientX <= bx + bw &&
+        clientY >= by1 && clientY <= by1 + bh) {
+      resetGame('attack');
+    } else if (clientX >= bx && clientX <= bx + bw &&
+               clientY >= by2 && clientY <= by2 + bh) {
+      resetGame('defense');
+    }
+    return;
+  }
+
+  if (G.screen === 'end') {
+    const bw = Math.min(320, W * 0.72);
+    const bh = 62;
+    const bx = (W - bw) / 2;
+    const by = H * 0.62;
+    if (clientX >= bx && clientX <= bx + bw &&
+        clientY >= by && clientY <= by + bh) {
+      G.screen = 'menu';
+      G.side = null;
+      G.result = null;
+      G.drones = [];
+      G.turrets = [];
+      G.tracers = [];
+      G.particles = [];
+      G.target = null;
+    }
+    return;
+  }
+
+  if (G.screen === 'play') {
+    const wp = s2w(clientX, clientY);
+    if (G.side === 'attack') {
+      setAttackWaypoint(wp.x, wp.y);
+    } else {
+      if (G.placement.active) tryPlaceTurret(wp.x, wp.y);
+      else                    fireAllTurrets();
+    }
+  }
+}
+
+cvs.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  handleTap(e.clientX, e.clientY);
+}, { passive: false });
+
+// Блокируем скролл/зум на iOS
+document.addEventListener('touchmove', (e) => e.preventDefault(), { passive: false });
+document.addEventListener('gesturestart', (e) => e.preventDefault());
+
+/* ============================================================
+   РЕНДЕР
+   ============================================================ */
+function drawTarget(c) {
+  const t = G.target;
+  if (!t) return;
+  c.save();
+  c.translate(t.x, t.y);
+  // Подсветка
+  const grd = c.createRadialGradient(0, 0, 0, 0, 0, t.radius * 1.6);
+  grd.addColorStop(0, 'rgba(255,70,70,0.18)');
+  grd.addColorStop(1, 'rgba(255,70,70,0)');
+  c.fillStyle = grd;
+  c.beginPath(); c.arc(0, 0, t.radius * 1.6, 0, Math.PI * 2); c.fill();
+  // Корпус
+  c.fillStyle = '#26161a';
+  c.strokeStyle = '#c04040';
+  c.lineWidth = 3;
+  c.beginPath(); c.arc(0, 0, t.radius, 0, Math.PI * 2); c.fill(); c.stroke();
+  // Внутренний контур
+  c.beginPath(); c.arc(0, 0, t.radius * 0.55, 0, Math.PI * 2); c.stroke();
+  // Крест
+  c.strokeStyle = 'rgba(255,80,80,0.8)';
+  c.lineWidth = 4;
+  const k = t.radius * 0.85;
+  c.beginPath();
+  c.moveTo(-k, 0); c.lineTo(k, 0);
+  c.moveTo(0, -k); c.lineTo(0, k);
+  c.stroke();
+  // HP
+  const bw = t.radius * 2;
+  const bh = 10;
+  c.fillStyle = 'rgba(0,0,0,0.65)';
+  c.fillRect(-bw / 2, -t.radius - 24, bw, bh);
+  const p = clamp(t.hp / t.maxHp, 0, 1);
+  c.fillStyle = p > 0.5 ? '#ff4444' : (p > 0.25 ? '#ff8844' : '#ffcc33');
+  c.fillRect(-bw / 2 + 1, -t.radius - 23, (bw - 2) * p, bh - 2);
+  c.restore();
+}
+
+function drawTurret(c, t) {
+  // Радиус
+  c.beginPath();
+  c.arc(t.x, t.y, t.range, 0, Math.PI * 2);
+  c.fillStyle = 'rgba(255,140,70,0.05)';
+  c.fill();
+  c.strokeStyle = 'rgba(255,140,70,0.28)';
+  c.lineWidth = 1.5;
+  c.setLineDash([8, 8]);
+  c.stroke();
+  c.setLineDash([]);
+
+  c.save();
+  c.translate(t.x, t.y);
+  // База
+  c.fillStyle = '#2a3038';
+  c.beginPath(); c.arc(0, 0, 19, 0, Math.PI * 2); c.fill();
+  c.strokeStyle = '#5a6270'; c.lineWidth = 2; c.stroke();
+  // Ствол
+  c.rotate(t.angle);
+  c.fillStyle = '#7a8290';
+  c.fillRect(0, -3.5, 30, 7);
+  c.fillStyle = '#9aa2b0';
+  c.fillRect(26, -3.5, 5, 7);
+  c.restore();
+
+  // Индикатор перезарядки
+  if (t.cooldown > 0) {
+    const prog = 1 - t.cooldown / t.maxCooldown;
+    c.save();
+    c.translate(t.x, t.y);
+    c.strokeStyle = 'rgba(255,210,80,0.85)';
+    c.lineWidth = 3;
+    c.beginPath();
+    c.arc(0, 0, 23, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * prog);
+    c.stroke();
+    c.restore();
+  }
+}
+
+function drawDrone(c, d) {
+  const bobY = Math.sin(d.bob) * 1.2;
+  c.save();
+  c.translate(d.x, d.y + bobY);
+  c.rotate(d.angle);
+
+  // Пламя двигателя
+  c.fillStyle = 'rgba(120,200,255,0.5)';
+  c.beginPath();
+  c.ellipse(-13, 0, 8, 3, 0, 0, Math.PI * 2);
+  c.fill();
+
+  // Корпус
+  const hit = d.hitFlash > 0;
+  c.fillStyle = hit ? '#ffffff' : '#5ac8ff';
+  c.strokeStyle = hit ? '#ffcc33' : '#0a3a5a';
+  c.lineWidth = 1.6;
+  c.beginPath();
+  c.moveTo(16, 0);
+  c.lineTo(-12, -11);
+  c.lineTo(-6, 0);
+  c.lineTo(-12, 11);
+  c.closePath();
+  c.fill(); c.stroke();
+
+  // Кабина
+  c.fillStyle = hit ? '#ffffff' : '#0a3a5a';
+  c.beginPath(); c.arc(4, 0, 3, 0, Math.PI * 2); c.fill();
+
+  c.restore();
+
+  // HP-бар
+  const bw = 30, bh = 4;
+  c.fillStyle = 'rgba(0,0,0,0.55)';
+  c.fillRect(d.x - bw / 2, d.y - 26 + bobY, bw, bh);
+  const p = clamp(d.hp / d.maxHp, 0, 1);
+  c.fillStyle = p > 0.5 ? '#44dd66' : (p > 0.25 ? '#ffaa33' : '#ff4444');
+  c.fillRect(d.x - bw / 2, d.y - 26 + bobY, bw * p, bh);
+}
+
+function renderWorld() {
+  ctx.save();
+  ctx.translate(ox, oy);
+  ctx.scale(scale, scale);
+
+  // Фон
+  ctx.fillStyle = '#12171f';
+  ctx.fillRect(0, 0, WORLD_W, WORLD_H);
+
+  // Сетка
+  ctx.strokeStyle = 'rgba(80,120,160,0.08)';
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= WORLD_W; x += 100) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, WORLD_H); ctx.stroke();
+  }
+  for (let y = 0; y <= WORLD_H; y += 100) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(WORLD_W, y); ctx.stroke();
+  }
+
+  // Зона размещения турелей
+  if (G.side === 'defense' && G.placement.active) {
+    ctx.fillStyle = 'rgba(90,200,255,0.06)';
+    ctx.fillRect(PLACE_MARGIN_X, PLACE_MIN_Y,
+                 WORLD_W - PLACE_MARGIN_X * 2,
+                 PLACE_MAX_Y - PLACE_MIN_Y);
+    ctx.strokeStyle = 'rgba(90,200,255,0.4)';
+    ctx.setLineDash([10, 10]);
+    ctx.lineWidth = 2;
+    ctx.strokeRect(PLACE_MARGIN_X, PLACE_MIN_Y,
+                   WORLD_W - PLACE_MARGIN_X * 2,
+                   PLACE_MAX_Y - PLACE_MIN_Y);
+    ctx.setLineDash([]);
+  }
+
+  // Цель
+  drawTarget(ctx);
+
+  // Турели
+  for (const t of G.turrets) drawTurret(ctx, t);
+
+  // Трассеры
+  ctx.lineWidth = 2;
+  for (const tr of G.tracers) {
+    ctx.globalAlpha = clamp(tr.life / tr.maxLife, 0, 1);
+    ctx.strokeStyle = tr.color;
+    ctx.beginPath();
+    ctx.moveTo(tr.x1, tr.y1);
+    ctx.lineTo(tr.x2, tr.y2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // БПЛА
+  for (const d of G.drones) if (d.alive) drawDrone(ctx, d);
+
+  // Партиклы
+  for (const p of G.particles) {
+    ctx.globalAlpha = clamp(p.life / p.maxLife, 0, 1);
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+
+  ctx.restore();
+}
+
+function drawHUD() {
+  if (G.screen !== 'play') return;
+  // Верхняя панель
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, 0, W, 52);
+
+  const alive = G.drones.filter(d => d.alive).length;
+  ctx.font = 'bold 16px -apple-system,sans-serif';
+  ctx.textBaseline = 'middle';
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = '#fff';
+  const left = G.side === 'attack'
+    ? `БПЛА в воздухе: ${alive}`
+    : `Целей: ${alive + G.spawnQueue}`;
+  ctx.fillText(left, 16, 26);
+
+  ctx.textAlign = 'right';
+  ctx.fillStyle = G.side === 'attack' ? '#5ac8ff' : '#ff8844';
+  ctx.fillText(G.side === 'attack' ? 'АТАКА' : 'ОБОРОНА', W - 16, 26);
+
+  // HP цели
+  if (G.target) {
+    const bw = W * 0.7;
+    const bx = (W - bw) / 2;
+    const by = H - 26;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    roundRect(ctx, bx, by, bw, 12, 6); ctx.fill();
+    const p = clamp(G.target.hp / G.target.maxHp, 0, 1);
+    ctx.fillStyle = G.side === 'attack' ? '#ff5555' : '#44dd66';
+    roundRect(ctx, bx + 2, by + 2, (bw - 4) * p, 8, 4); ctx.fill();
+  }
+
+  // Сообщение
+  if (G.messageTime > 0) {
+    ctx.globalAlpha = clamp(G.messageTime, 0, 1);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffeebb';
+    ctx.font = 'bold 17px -apple-system,sans-serif';
+    ctx.shadowColor = 'rgba(0,0,0,0.9)';
+    ctx.shadowBlur = 6;
+    ctx.fillText(G.message, W / 2, H - 62);
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+  }
+
+  // Вспышка при попадании по цели
+  if (G.screenFlash > 0) {
+    ctx.globalAlpha = G.screenFlash * 2;
+    ctx.fillStyle = '#ff8844';
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawMenu() {
+  ctx.fillStyle = '#0a0e14';
+  ctx.fillRect(0, 0, W, H);
+
+  // Декоративные БПЛА на фоне
+  const t = now() / 1000;
+  ctx.save();
+  ctx.globalAlpha = 0.15;
+  for (let i = 0; i < 5; i++) {
+    const x = W * ((i * 0.23 + t * 0.03) % 1.2) - 40;
+    const y = H * 0.15 + i * 40 + Math.sin(t + i) * 12;
+    ctx.fillStyle = '#5ac8ff';
+    ctx.beginPath();
+    ctx.moveTo(x + 14, y); ctx.lineTo(x - 10, y - 8);
+    ctx.lineTo(x - 5, y); ctx.lineTo(x - 10, y + 8);
+    ctx.closePath(); ctx.fill();
+  }
+  ctx.restore();
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Заголовок
+  ctx.fillStyle = '#5ac8ff';
+  ctx.font = `bold ${Math.min(44, W / 8)}px -apple-system,sans-serif`;
+  ctx.fillText('ТИХИЙ УДАР', W / 2, H * 0.26);
+  ctx.fillStyle = '#ff8844';
+  ctx.font = `bold ${Math.min(22, W / 14)}px -apple-system,sans-serif`;
+  ctx.fillText('СТАЛЬНОЙ ЗАСЛОН', W / 2, H * 0.26 + 40);
+
+  ctx.fillStyle = '#6a7a8a';
+  ctx.font = '13px -apple-system,sans-serif';
+  ctx.fillText('Асимметричная тактическая стратегия', W / 2, H * 0.26 + 70);
+
+  // Кнопки
+  const bw = Math.min(360, W * 0.82);
+  const bh = 76;
+  const bx = (W - bw) / 2;
+  const by1 = H * 0.50;
+  const by2 = by1 + bh + 26;
+
+  // АТАКА
+  const g1 = ctx.createLinearGradient(bx, by1, bx, by1 + bh);
+  g1.addColorStop(0, '#1d4d7e');
+  g1.addColorStop(1, '#0e2c4a');
+  ctx.fillStyle = g1;
+  roundRect(ctx, bx, by1, bw, bh, 14); ctx.fill();
+  ctx.strokeStyle = '#5ac8ff'; ctx.lineWidth = 2;
+  roundRect(ctx, bx, by1, bw, bh, 14); ctx.stroke();
+  ctx.fillStyle = '#e8f4ff';
+  ctx.font = 'bold 24px -apple-system,sans-serif';
+  ctx.fillText('АТАКА', W / 2, by1 + bh / 2 - 8);
+  ctx.fillStyle = '#9ccfe8';
+  ctx.font = '13px -apple-system,sans-serif';
+  ctx.fillText('Управлять БПЛА · поразить цель', W / 2, by1 + bh / 2 + 18);
+
+  // ОБОРОНА
+  const g2 = ctx.createLinearGradient(bx, by2, bx, by2 + bh);
+  g2.addColorStop(0, '#7a3a16');
+  g2.addColorStop(1, '#3e1d0a');
+  ctx.fillStyle = g2;
+  roundRect(ctx, bx, by2, bw, bh, 14); ctx.fill();
+  ctx.strokeStyle = '#ff8844'; ctx.lineWidth = 2;
+  roundRect(ctx, bx, by2, bw, bh, 14); ctx.stroke();
+  ctx.fillStyle = '#ffeee0';
+  ctx.font = 'bold 24px -apple-system,sans-serif';
+  ctx.fillText('ОБОРОНА', W / 2, by2 + bh / 2 - 8);
+  ctx.fillStyle = '#f0b48c';
+  ctx.font = '13px -apple-system,sans-serif';
+  ctx.fillText('Разместить турели · сбить все БПЛА', W / 2, by2 + bh / 2 + 18);
+
+  // Подсказка
+  ctx.fillStyle = '#4a5560';
+  ctx.font = '12px -apple-system,sans-serif';
+  ctx.fillText('Тап по экрану — основное действие', W / 2, H - 40);
+}
+
+function drawEnd() {
+  ctx.fillStyle = 'rgba(0,0,0,0.82)';
+  ctx.fillRect(0, 0, W, H);
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const win = G.result === 'win';
+
+  ctx.fillStyle = win ? '#44dd66' : '#ff4444';
+  ctx.shadowColor = win ? '#44dd66' : '#ff4444';
+  ctx.shadowBlur = 22;
+  ctx.font = `bold ${Math.min(52, W / 7)}px -apple-system,sans-serif`;
+  ctx.fillText(win ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ', W / 2, H * 0.36);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#aab';
+  ctx.font = '17px -apple-system,sans-serif';
+  let msg;
+  if (win)  msg = G.side === 'attack' ? 'Цель поражена' : 'Все БПЛА сбиты';
+  else      msg = G.side === 'attack' ? 'Все БПЛА уничтожены' : 'Объект уничтожен';
+  ctx.fillText(msg, W / 2, H * 0.36 + 60);
+
+  const bw = Math.min(320, W * 0.72);
+  const bh = 62;
+  const bx = (W - bw) / 2;
+  const by = H * 0.62;
+
+  const g = ctx.createLinearGradient(bx, by, bx, by + bh);
+  g.addColorStop(0, '#2a4a6a');
+  g.addColorStop(1, '#16283a');
+  ctx.fillStyle = g;
+  roundRect(ctx, bx, by, bw, bh, 12); ctx.fill();
+  ctx.strokeStyle = '#5ac8ff'; ctx.lineWidth = 2;
+  roundRect(ctx, bx, by, bw, bh, 12); ctx.stroke();
+  ctx.fillStyle = '#e8f4ff';
+  ctx.font = 'bold 20px -apple-system,sans-serif';
+  ctx.fillText('В МЕНЮ', W / 2, by + bh / 2);
+}
+
+/* ============================================================
+   ГЛАВНЫЙ ЦИКЛ
+   ============================================================ */
+let lastT = 0;
+function loop(t) {
+  if (!lastT) lastT = t;
+  let dt = (t - lastT) / 1000;
+  lastT = t;
+  if (dt > 0.1) dt = 0.1; // защита от долгих пауз (сворачивание)
+
+  update(dt);
+
+  ctx.clearRect(0, 0, W, H);
+
+  if (G.screen === 'menu') {
+    drawMenu();
+  } else {
+    renderWorld();
+    drawHUD();
+    if (G.screen === 'end') drawEnd();
+  }
+
+  requestAnimationFrame(loop);
+}
+
+/* ============================================================
+   СТАРТ
+   ============================================================ */
+resize();
+requestAnimationFrame(loop);
+
+// Пауза при сворачивании — сбрасываем таймер
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden) lastT = 0;
+});
+</script>
+</body>
+</html>
