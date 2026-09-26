@@ -6,7 +6,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0a0e14">
-<title>Тихий удар 3.0</title>
+<title>Тихий удар 4.0</title>
 <style>
   *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
   html,body{width:100%;height:100%;overflow:hidden;background:#0a0e14;
@@ -22,17 +22,17 @@
 'use strict';
 
 /* ============================================================
-   КОНСТАНТЫ МИРА
+   1. КОНСТАНТЫ
    ============================================================ */
-const WORLD_W = 2000;
-const WORLD_H = 3600;
-const TARGET_X = 1000;
-const TARGET_Y = 420;
-const TARGET_R = 95;
-const PLACE_ZONE = { x1: 120, y1: 1000, x2: WORLD_W - 120, y2: WORLD_H - 120 };
+const WORLD_W = 4000;
+const WORLD_H = 7000;
+const TARGET_X = 2000;
+const TARGET_Y = 800;
+const TARGET_R = 130;
+const PLACE_ZONE = { x1: 200, y1: 2000, x2: WORLD_W - 200, y2: WORLD_H - 200 };
 
 /* ============================================================
-   CANVAS
+   2. CANVAS
    ============================================================ */
 const cvs = document.getElementById('c');
 const ctx = cvs.getContext('2d');
@@ -48,17 +48,17 @@ window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 150));
 
 /* ============================================================
-   УТИЛИТЫ
+   3. УТИЛИТЫ
    ============================================================ */
 const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
-const now   = () => performance.now();
+const now = () => performance.now();
 function roundRect(c, x, y, w, h, r) {
   c.beginPath();
   c.moveTo(x + r, y);
-  c.arcTo(x + w, y,     x + w, y + h, r);
-  c.arcTo(x + w, y + h, x,     y + h, r);
-  c.arcTo(x,     y + h, x,     y,     r);
-  c.arcTo(x,     y,     x + w, y,     r);
+  c.arcTo(x + w, y, x + w, y + h, r);
+  c.arcTo(x + w, y + h, x, y + h, r);
+  c.arcTo(x, y + h, x, y, r);
+  c.arcTo(x, y, x + w, y, r);
   c.closePath();
 }
 let _seed = 1;
@@ -67,24 +67,20 @@ function rnd() { _seed = (_seed * 1664525 + 1013904223) | 0; return ((_seed >>> 
 function rr(a, b) { return a + rnd() * (b - a); }
 
 /* ============================================================
-   СОХРАНЕНИЕ
+   4. СОХРАНЕНИЕ
    ============================================================ */
-const SAVE_KEY = 'tihiy-udar-save-v3';
+const SAVE_KEY = 'tihiy-udar-save-v4';
 const DEFAULT_SAVE = {
-  version: 3,
+  version: 4,
   credits: 0,
-  stars: {},        // missionId -> 0..3
-  upgrades: {       // unitKey -> level (1..5)
-    kamikaze: 1, heavy: 1, jammer: 1,
-    pkt: 1, zu23: 1, igla: 1
-  },
+  stars: {},
+  upgrades: { kamikaze: 1, heavy: 1, jammer: 1, pkt: 1, zu23: 1, igla: 1 },
   unlocked: {
     attack: { kamikaze: true, heavy: false, jammer: false },
-    defense: { pkt: true, zu23: false, igla: false }
+    defense: { pkt: true, zu23: false, igla: false },
   },
-  daily: { lastDay: null, streak: 0 },
   settings: { sound: true, vibrate: true },
-  endlessBest: 0,
+  opBest: 0,
 };
 let Save = JSON.parse(JSON.stringify(DEFAULT_SAVE));
 function loadSave() {
@@ -94,40 +90,33 @@ function loadSave() {
       const o = JSON.parse(raw);
       Save = Object.assign(JSON.parse(JSON.stringify(DEFAULT_SAVE)), o);
       Save.upgrades = Object.assign({}, DEFAULT_SAVE.upgrades, o.upgrades || {});
-      Save.unlocked = Object.assign({}, DEFAULT_SAVE.unlocked, o.unlocked || {});
-      Save.unlocked.attack = Object.assign({}, DEFAULT_SAVE.unlocked.attack, (o.unlocked||{}).attack||{});
-      Save.unlocked.defense = Object.assign({}, DEFAULT_SAVE.unlocked.defense, (o.unlocked||{}).defense||{});
+      Save.unlocked.attack = Object.assign({}, DEFAULT_SAVE.unlocked.attack, (o.unlocked || {}).attack || {});
+      Save.unlocked.defense = Object.assign({}, DEFAULT_SAVE.unlocked.defense, (o.unlocked || {}).defense || {});
       Save.settings = Object.assign({}, DEFAULT_SAVE.settings, o.settings || {});
     }
-  } catch(e) {}
+  } catch (e) {}
 }
-function commitSave() {
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(Save)); } catch(e) {}
-}
+function commitSave() { try { localStorage.setItem(SAVE_KEY, JSON.stringify(Save)); } catch (e) {} }
 
 /* ============================================================
-   ЗВУК (Web Audio)
+   5. ЗВУК
    ============================================================ */
 let actx = null;
 function audioCtx() {
-  if (!actx) {
-    try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch(e) {}
-  }
+  if (!actx) { try { actx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} }
   return actx;
 }
 function beep(freq, dur, type, vol) {
   if (!Save.settings.sound) return;
   const a = audioCtx(); if (!a) return;
   try {
-    const o = a.createOscillator();
-    const g = a.createGain();
-    o.type = type || 'square';
-    o.frequency.value = freq;
+    const o = a.createOscillator(); const g = a.createGain();
+    o.type = type || 'square'; o.frequency.value = freq;
     g.gain.value = vol || 0.05;
     g.gain.exponentialRampToValueAtTime(0.0001, a.currentTime + dur);
     o.connect(g); g.connect(a.destination);
     o.start(); o.stop(a.currentTime + dur);
-  } catch(e) {}
+  } catch (e) {}
 }
 function noise(dur, vol) {
   if (!Save.settings.sound) return;
@@ -138,27 +127,24 @@ function noise(dur, vol) {
     for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * (1 - i / d.length);
     const src = a.createBufferSource(); src.buffer = buf;
     const g = a.createGain(); g.gain.value = vol || 0.12;
-    src.connect(g); g.connect(a.destination);
-    src.start();
-  } catch(e) {}
+    src.connect(g); g.connect(a.destination); src.start();
+  } catch (e) {}
 }
-function vibrate(ms) {
-  if (!Save.settings.vibrate) return;
-  if (navigator.vibrate) try { navigator.vibrate(ms); } catch(e) {}
-}
-function sfxShot()   { beep(720, 0.03, 'square', 0.025); }
-function sfxHit()    { beep(220, 0.06, 'sawtooth', 0.04); vibrate(15); }
-function sfxExplode(){ noise(0.35, 0.15); beep(90, 0.4, 'sawtooth', 0.06); vibrate(60); }
-function sfxClick()  { beep(520, 0.04, 'sine', 0.04); }
-function sfxWin()    { beep(660,0.12,'sine',0.06); setTimeout(()=>beep(880,0.12,'sine',0.06),120); setTimeout(()=>beep(1100,0.22,'sine',0.07),260); }
-function sfxLose()   { beep(220,0.2,'sine',0.05); setTimeout(()=>beep(150,0.35,'sine',0.05),180); }
+function vibrate(ms) { if (!Save.settings.vibrate) return; if (navigator.vibrate) try { navigator.vibrate(ms); } catch (e) {} }
+function sfxShot() { beep(720, 0.03, 'square', 0.025); }
+function sfxHit() { beep(220, 0.06, 'sawtooth', 0.04); vibrate(12); }
+function sfxExplode() { noise(0.35, 0.15); beep(90, 0.4, 'sawtooth', 0.06); vibrate(55); }
+function sfxClick() { beep(520, 0.04, 'sine', 0.04); }
+function sfxWin() { beep(660, 0.12, 'sine', 0.06); setTimeout(() => beep(880, 0.12, 'sine', 0.06), 120); setTimeout(() => beep(1100, 0.22, 'sine', 0.07), 260); }
+function sfxLose() { beep(220, 0.2, 'sine', 0.05); setTimeout(() => beep(150, 0.35, 'sine', 0.05), 180); }
+function sfxMG() { noise(0.06, 0.08); beep(320, 0.04, 'square', 0.03); }
 
 /* ============================================================
-   КАМЕРА
+   6. КАМЕРА (для вида сверху)
    ============================================================ */
 const cam = {
-  x: TARGET_X, y: WORLD_H - 500, zoom: 0.8, targetZoom: 0.8,
-  minZoom: 0.25, maxZoom: 2.5, follow: false,
+  x: TARGET_X, y: WORLD_H - 800, zoom: 0.7, targetZoom: 0.7,
+  minZoom: 0.15, maxZoom: 2.5, follow: false,
   shakeX: 0, shakeY: 0, shakeMag: 0, shakeTime: 0,
 };
 function applyCamera() {
@@ -167,21 +153,21 @@ function applyCamera() {
   ctx.translate(-cam.x, -cam.y);
 }
 function screenToWorld(sx, sy) {
-  return { x: (sx - W/2 - cam.shakeX) / cam.zoom + cam.x,
-           y: (sy - H/2 - cam.shakeY) / cam.zoom + cam.y };
+  return { x: (sx - W / 2 - cam.shakeX) / cam.zoom + cam.x,
+           y: (sy - H / 2 - cam.shakeY) / cam.zoom + cam.y };
 }
-function zoomAt(sx, sy, newZoom) {
-  newZoom = clamp(newZoom, cam.minZoom, cam.maxZoom);
-  const before = screenToWorld(sx, sy);
-  cam.zoom = newZoom; cam.targetZoom = newZoom;
-  const after = screenToWorld(sx, sy);
-  cam.x += before.x - after.x; cam.y += before.y - after.y;
+function zoomAt(sx, sy, nz) {
+  nz = clamp(nz, cam.minZoom, cam.maxZoom);
+  const b = screenToWorld(sx, sy);
+  cam.zoom = nz; cam.targetZoom = nz;
+  const a = screenToWorld(sx, sy);
+  cam.x += b.x - a.x; cam.y += b.y - a.y;
   clampCamera();
 }
 function clampCamera() {
-  const halfW = W/2/cam.zoom, halfH = H/2/cam.zoom;
-  if (halfW*2 < WORLD_W) cam.x = clamp(cam.x, halfW, WORLD_W - halfW); else cam.x = WORLD_W/2;
-  if (halfH*2 < WORLD_H) cam.y = clamp(cam.y, halfH, WORLD_H - halfH); else cam.y = WORLD_H/2;
+  const hw = W / 2 / cam.zoom, hh = H / 2 / cam.zoom;
+  cam.x = (hw * 2 < WORLD_W) ? clamp(cam.x, hw, WORLD_W - hw) : WORLD_W / 2;
+  cam.y = (hh * 2 < WORLD_H) ? clamp(cam.y, hh, WORLD_H - hh) : WORLD_H / 2;
 }
 function visibleBounds() {
   const tl = screenToWorld(0, 0), br = screenToWorld(W, H);
@@ -193,248 +179,495 @@ function shakeCamera(mag, time) {
 }
 
 /* ============================================================
-   МЕСТНОСТЬ
+   7. МЕСТНОСТЬ + РАНДОМНЫЕ ДОРОГИ-ПОЛИЛИНИИ
    ============================================================ */
-const terrain = { riverPts: [], roads: [], buildings: [], trees: [], parks: [], fields: [] };
-function riverAt(y) {
-  const p = terrain.riverPts;
-  if (p.length < 2) return 500;
-  for (let i = 0; i < p.length - 1; i++) {
-    const a = p[i], b = p[i+1];
-    if (y >= a.y && y <= b.y) {
-      const t = (y - a.y) / (b.y - a.y);
-      return a.x + (b.x - a.x) * t;
-    }
+const terrain = {
+  river: [],
+  roads: [],       // каждый: {pts:[{x,y}...], w, major, name}
+  buildings: [],
+  trees: [],
+  parks: [],
+  fields: [],
+};
+
+/* Расстояние от точки до полилинии (приближённо — до сегментов) */
+function distToPolyline(px, py, pts) {
+  let best = Infinity;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i], b = pts[i + 1];
+    const dx = b.x - a.x, dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    let t = len2 > 0 ? ((px - a.x) * dx + (py - a.y) * dy) / len2 : 0;
+    t = clamp(t, 0, 1);
+    const qx = a.x + dx * t, qy = a.y + dy * t;
+    const d = Math.hypot(px - qx, py - qy);
+    if (d < best) best = d;
   }
-  return p[p.length-1].x;
+  return best;
 }
+function distToAnyRoad(px, py) {
+  let best = Infinity;
+  for (const r of terrain.roads) {
+    const d = distToPolyline(px, py, r.pts);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
 function generateTerrain() {
   seedRand(20260226);
-  terrain.riverPts.length = 0; terrain.roads.length = 0;
-  terrain.buildings.length = 0; terrain.trees.length = 0;
-  terrain.parks.length = 0; terrain.fields.length = 0;
+  terrain.river.length = 0;
+  terrain.roads.length = 0;
+  terrain.buildings.length = 0;
+  terrain.trees.length = 0;
+  terrain.parks.length = 0;
+  terrain.fields.length = 0;
 
-  let rx = 480;
-  for (let y = -100; y <= WORLD_H + 100; y += 90) {
-    rx += rr(-55, 55); rx = clamp(rx, 280, 680);
-    terrain.riverPts.push({ x: rx, y });
+  /* --- Река: извилистая, вертикальная, слева --- */
+  let rx = 900;
+  for (let y = -200; y <= WORLD_H + 200; y += 130) {
+    rx += rr(-80, 80);
+    rx = clamp(rx, 500, 1400);
+    terrain.river.push({ x: rx, y });
   }
-  for (const y of [600, 1400, 2200, 3000])
-    terrain.roads.push({ x1: 0, y1: y, x2: WORLD_W, y2: y, w: 55, major: true });
-  for (const x of [820, 1180, 1600])
-    terrain.roads.push({ x1: x, y1: 0, x2: x, y2: WORLD_H, w: 55, major: true });
-  for (let i = 0; i < 10; i++) {
-    const y = rr(200, WORLD_H - 200);
-    terrain.roads.push({ x1: 0, y1: y, x2: WORLD_W, y2: y, w: 24, major: false });
-  }
-  for (let i = 0; i < 7; i++) {
-    const x = rr(200, WORLD_W - 200);
-    terrain.roads.push({ x1: x, y1: 0, x2: x, y2: WORLD_H, w: 24, major: false });
-  }
-  for (let i = 0; i < 18; i++)
-    terrain.fields.push({ x: rr(0, WORLD_W-400), y: rr(0, WORLD_H-400),
-      w: rr(250, 600), h: rr(250, 550),
-      color: rnd() < 0.5 ? '#2e3d20' : '#3a4526' });
-  for (let i = 0; i < 6; i++)
-    terrain.parks.push({ x: rr(150, WORLD_W-550), y: rr(200, WORLD_H-550),
-      w: rr(250, 450), h: rr(250, 450) });
 
-  const zones = [
-    { x1: 750, y1: 200, x2: 1700, y2: 900, d: 30 },
-    { x1: 850, y1: 1200, x2: 1700, y2: 1900, d: 22 },
-    { x1: 200, y1: 2400, x2: 1000, y2: 3100, d: 15 },
-    { x1: 1300, y1: 2300, x2: 1900, y2: 3200, d: 15 },
-  ];
-  for (const z of zones) {
-    for (let i = 0; i < z.d; i++) {
-      const bw = rr(55, 140), bh = rr(55, 140);
-      const bx = rr(z.x1, z.x2 - bw), by = rr(z.y1, z.y2 - bh);
-      if (Math.abs(bx + bw/2 - riverAt(by + bh/2)) < 110) continue;
-      terrain.buildings.push({ x: bx, y: by, w: bw, h: bh,
-        type: rnd() < 0.35 ? 'tall' : 'low', shade: rr(0.65, 1.05) });
+  /* --- Рандомные дороги-полилинии --- */
+  // Магистрали (горизонтальные)
+  const hYs = [700, 1700, 2700, 3800, 4900, 6000];
+  for (const baseY of hYs) {
+    const pts = [];
+    const segs = 10;
+    let y = baseY;
+    for (let i = 0; i <= segs; i++) {
+      const x = (i / segs) * WORLD_W;
+      y += rr(-100, 100);
+      pts.push({ x, y });
     }
+    terrain.roads.push({ pts, w: 90, major: true });
   }
-  for (let i = 0; i < 650; i++) {
-    const tx = rr(40, WORLD_W-40), ty = rr(40, WORLD_H-40);
-    if (Math.abs(tx - riverAt(ty)) < 90) continue;
-    let skip = false;
-    for (const r of terrain.roads) {
-      if (r.major) {
-        if (r.x1 === 0 && Math.abs(ty - r.y1) < 65) { skip = true; break; }
-        if (r.y1 === 0 && Math.abs(tx - r.x1) < 65) { skip = true; break; }
+  // Магистрали (вертикальные)
+  const vXs = [700, 1500, 2400, 3300];
+  for (const baseX of vXs) {
+    const pts = [];
+    const segs = 12;
+    let x = baseX;
+    for (let i = 0; i <= segs; i++) {
+      const y = (i / segs) * WORLD_H;
+      x += rr(-90, 90);
+      pts.push({ x, y });
+    }
+    terrain.roads.push({ pts, w: 90, major: true });
+  }
+  // Второстепенные улицы (короткие, между магистралями)
+  for (let i = 0; i < 26; i++) {
+    const isH = rnd() < 0.5;
+    if (isH) {
+      const y = rr(400, WORLD_H - 400);
+      const x1 = rr(0, WORLD_W - 800);
+      const x2 = x1 + rr(400, 1200);
+      const pts = [];
+      let yy = y;
+      for (let s = 0; s <= 4; s++) {
+        pts.push({ x: x1 + (x2 - x1) * (s / 4), y: yy });
+        yy += rr(-60, 60);
       }
+      terrain.roads.push({ pts, w: 40, major: false });
+    } else {
+      const x = rr(400, WORLD_W - 400);
+      const y1 = rr(0, WORLD_H - 800);
+      const y2 = y1 + rr(400, 1200);
+      const pts = [];
+      let xx = x;
+      for (let s = 0; s <= 4; s++) {
+        pts.push({ x: xx, y: y1 + (y2 - y1) * (s / 4) });
+        xx += rr(-60, 60);
+      }
+      terrain.roads.push({ pts, w: 40, major: false });
+    }
+  }
+
+  /* --- Поля (фоновые пятна) --- */
+  for (let i = 0; i < 40; i++) {
+    terrain.fields.push({
+      x: rr(0, WORLD_W - 700), y: rr(0, WORLD_H - 700),
+      w: rr(400, 900), h: rr(400, 900),
+      color: rnd() < 0.5 ? '#2e3d20' : '#3a4526',
+    });
+  }
+
+  /* --- Парки / леса (крупные массивы) --- */
+  for (let i = 0; i < 14; i++) {
+    terrain.parks.push({
+      x: rr(150, WORLD_W - 800), y: rr(200, WORLD_H - 800),
+      w: rr(400, 900), h: rr(400, 900),
+    });
+  }
+
+  /* --- Здания: вдоль дорог, блоками --- */
+  const cityZones = [
+    { x1: 1500, y1: 400, x2: 2600, y2: 1400, d: 90 },   // город у цели
+    { x1: 500, y1: 2200, x2: 1800, y2: 3200, d: 70 },
+    { x1: 2200, y1: 2400, x2: 3600, y2: 3400, d: 70 },
+    { x1: 800, y1: 4400, x2: 2200, y2: 5400, d: 60 },
+    { x1: 2400, y1: 4600, x2: 3700, y2: 5800, d: 60 },
+    { x1: 1200, y1: 6000, x2: 3000, y2: 6800, d: 55 },
+  ];
+  for (const z of cityZones) {
+    for (let i = 0; i < z.d; i++) {
+      const bw = rr(70, 180), bh = rr(70, 180);
+      const bx = rr(z.x1, z.x2 - bw), by = rr(z.y1, z.y2 - bh);
+      const cx = bx + bw / 2, cy = by + bh / 2;
+      if (distToAnyRoad(cx, cy) < 60) continue;
+      if (distToAnyRoad(cx, cy) > 500) continue;
+      // не на реке
+      let onRiver = false;
+      for (let ri = 0; ri < terrain.river.length - 1; ri++) {
+        const a = terrain.river[ri], b = terrain.river[ri + 1];
+        if (cy >= a.y && cy <= b.y) {
+          const t = (cy - a.y) / (b.y - a.y);
+          const rxc = a.x + (b.x - a.x) * t;
+          if (Math.abs(cx - rxc) < 130) onRiver = true;
+          break;
+        }
+      }
+      if (onRiver) continue;
+      terrain.buildings.push({
+        x: bx, y: by, w: bw, h: bh,
+        type: rnd() < 0.4 ? 'tall' : 'low',
+        shade: rr(0.65, 1.05),
+      });
+    }
+  }
+
+  /* --- Деревья --- */
+  for (let i = 0; i < 2600; i++) {
+    const tx = rr(40, WORLD_W - 40);
+    const ty = rr(40, WORLD_H - 40);
+    // не на дорогах
+    if (distToAnyRoad(tx, ty) < 55) continue;
+    // не на зданиях
+    let skip = false;
+    for (const b of terrain.buildings) {
+      if (tx > b.x - 25 && tx < b.x + b.w + 25 &&
+          ty > b.y - 25 && ty < b.y + b.h + 25) { skip = true; break; }
     }
     if (skip) continue;
-    for (const b of terrain.buildings)
-      if (tx > b.x-20 && tx < b.x+b.w+20 && ty > b.y-20 && ty < b.y+b.h+20) { skip = true; break; }
-    if (skip) continue;
-    terrain.trees.push({ x: tx, y: ty, r: rr(11, 22), shade: rr(0.5, 1.0) });
+    terrain.trees.push({ x: tx, y: ty, r: rr(14, 28), shade: rr(0.5, 1.0) });
+  }
+}
+
+function drawTerrain() {
+  const b = visibleBounds();
+  // База — зелёный луг
+  ctx.fillStyle = '#28361b';
+  ctx.fillRect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1);
+
+  // Поля
+  for (const f of terrain.fields) {
+    if (f.x + f.w < b.x1 || f.x > b.x2 || f.y + f.h < b.y1 || f.y > b.y2) continue;
+    ctx.fillStyle = f.color;
+    ctx.fillRect(f.x, f.y, f.w, f.h);
+  }
+  // Парки
+  for (const p of terrain.parks) {
+    if (p.x + p.w < b.x1 || p.x > b.x2 || p.y + p.h < b.y1 || p.y > b.y2) continue;
+    ctx.fillStyle = '#1f3a13';
+    ctx.fillRect(p.x, p.y, p.w, p.h);
+  }
+  // Река
+  if (terrain.river.length > 1) {
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(terrain.river[0].x, terrain.river[0].y);
+    for (let i = 1; i < terrain.river.length; i++)
+      ctx.lineTo(terrain.river[i].x, terrain.river[i].y);
+    ctx.strokeStyle = '#1f3a55'; ctx.lineWidth = 170; ctx.stroke();
+    ctx.strokeStyle = '#2f4f70'; ctx.lineWidth = 130; ctx.stroke();
+    ctx.strokeStyle = 'rgba(140,200,240,0.13)'; ctx.lineWidth = 40; ctx.stroke();
+  }
+  // Дороги
+  for (const r of terrain.roads) {
+    // фон обочины
+    ctx.strokeStyle = r.major ? '#2a2a2a' : '#252525';
+    ctx.lineWidth = r.w + 8; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(r.pts[0].x, r.pts[0].y);
+    for (let i = 1; i < r.pts.length; i++) ctx.lineTo(r.pts[i].x, r.pts[i].y);
+    ctx.stroke();
+    // асфальт
+    ctx.strokeStyle = r.major ? '#3a3a3a' : '#333';
+    ctx.lineWidth = r.w;
+    ctx.stroke();
+  }
+  // Разметка магистралей
+  for (const r of terrain.roads) {
+    if (!r.major) continue;
+    ctx.strokeStyle = 'rgba(240,220,120,0.28)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([30, 44]);
+    ctx.beginPath();
+    ctx.moveTo(r.pts[0].x, r.pts[0].y);
+    for (let i = 1; i < r.pts.length; i++) ctx.lineTo(r.pts[i].x, r.pts[i].y);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  // Здания
+  for (const bd of terrain.buildings) {
+    if (bd.x + bd.w < b.x1 - 10 || bd.x > b.x2 + 10 ||
+        bd.y + bd.h < b.y1 - 10 || bd.y > b.y2 + 10) continue;
+    ctx.fillStyle = 'rgba(0,0,0,0.4)';
+    ctx.fillRect(bd.x + 7, bd.y + 7, bd.w, bd.h);
+    const s = bd.shade;
+    ctx.fillStyle = bd.type === 'tall'
+      ? `rgb(${(70 * s) | 0},${(78 * s) | 0},${(92 * s) | 0})`
+      : `rgb(${(96 * s) | 0},${(88 * s) | 0},${(80 * s) | 0})`;
+    ctx.fillRect(bd.x, bd.y, bd.w, bd.h);
+    ctx.fillStyle = 'rgba(255,255,255,0.08)';
+    ctx.fillRect(bd.x + 9, bd.y + 9, bd.w - 18, bd.h - 18);
+    ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+    ctx.lineWidth = Math.max(0.8, 2 / cam.zoom);
+    ctx.strokeRect(bd.x, bd.y, bd.w, bd.h);
+  }
+  // Деревья
+  for (const t of terrain.trees) {
+    if (t.x + t.r < b.x1 - 10 || t.x - t.r > b.x2 + 10 ||
+        t.y + t.r < b.y1 - 10 || t.y - t.r > b.y2 + 10) continue;
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.beginPath(); ctx.arc(t.x + 4, t.y + 5, t.r, 0, Math.PI * 2); ctx.fill();
+    const s = t.shade;
+    ctx.fillStyle = `rgb(${(42 * s) | 0},${(96 * s) | 0},${(38 * s) | 0})`;
+    ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = `rgba(150,210,110,${0.28 * s})`;
+    ctx.beginPath(); ctx.arc(t.x - t.r * 0.3, t.y - t.r * 0.3, t.r * 0.6, 0, Math.PI * 2); ctx.fill();
   }
 }
 
 /* ============================================================
-   ОПРЕДЕЛЕНИЯ ЮНИТОВ
+   8. ЮНИТЫ
    ============================================================ */
 const ATTACK_UNITS = {
-  kamikaze: { name:'Камикадзе', hp:40,  speed:190, damage:25, radius:16, unlock: 0 },
-  heavy:    { name:'Тяжёлый',   hp:110, speed:110, damage:55, radius:22, unlock: 1 },
-  jammer:   { name:'РЭБ',       hp:60,  speed:150, damage:0,  radius:18, unlock: 2,
-              jamRadius: 240, jamDuration: 4 },
+  kamikaze: { name: 'Камикадзе', hp: 40, speed: 190, damage: 25, radius: 16 },
+  heavy: { name: 'Тяжёлый', hp: 110, speed: 110, damage: 55, radius: 22 },
+  jammer: { name: 'РЭБ', hp: 60, speed: 150, damage: 0, radius: 18,
+            jamRadius: 240, jamDuration: 4 },
 };
 const DEFENSE_UNITS = {
-  pkt:  { name:'ПКТ-пикап', hp:100, range:220, fireRate:3.0, damage:12, mobile:true,  unlock: 0 },
-  zu23: { name:'ЗУ-23-2',   hp:160, range:320, fireRate:2.0, damage:25, mobile:false, unlock: 1 },
-  igla: { name:'Игла',      hp:80,  range:450, fireRate:0.7, damage:80, mobile:false, unlock: 2 },
+  pkt:  { name: 'ПКТ-пикап', hp: 100, range: 240, fireRate: 3.0, damage: 12, mobile: true },
+  zu23: { name: 'ЗУ-23-2', hp: 160, range: 320, fireRate: 2.0, damage: 25, mobile: false },
+  igla: { name: 'Игла', hp: 80, range: 450, fireRate: 0.7, damage: 80, mobile: false },
 };
-
 function unitStat(base, lvl) {
-  const mulH = 1 + 0.12 * (lvl - 1);
-  const mulD = 1 + 0.08 * (lvl - 1);
-  return { hp: Math.round(base.hp * mulH), damage: Math.round(base.damage * mulD) };
+  const mH = 1 + 0.12 * (lvl - 1), mD = 1 + 0.08 * (lvl - 1);
+  return { hp: Math.round(base.hp * mH), damage: Math.round(base.damage * mD) };
 }
 
 /* ============================================================
-   СУЩНОСТИ
+   9. СУЩНОСТИ
    ============================================================ */
 class Particle {
   constructor(x, y, vx, vy, life, color, size) {
-    this.x=x; this.y=y; this.vx=vx; this.vy=vy;
-    this.life=life; this.maxLife=life; this.color=color; this.size=size||3;
+    this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+    this.life = life; this.maxLife = life; this.color = color; this.size = size || 3;
   }
-  update(dt){ this.x+=this.vx*dt; this.y+=this.vy*dt; this.vx*=0.94; this.vy*=0.94; this.life-=dt; }
-  get dead(){ return this.life<=0; }
+  update(dt) {
+    this.x += this.vx * dt; this.y += this.vy * dt;
+    this.vx *= 0.94; this.vy *= 0.94; this.life -= dt;
+  }
+  get dead() { return this.life <= 0; }
 }
 class Tracer {
-  constructor(x1,y1,x2,y2,color){ this.x1=x1;this.y1=y1;this.x2=x2;this.y2=y2;
-    this.life=0.16; this.maxLife=0.16; this.color=color||'#ffd24a'; }
-  update(dt){ this.life-=dt; }
-  get dead(){ return this.life<=0; }
+  constructor(x1, y1, x2, y2, color) {
+    this.x1 = x1; this.y1 = y1; this.x2 = x2; this.y2 = y2;
+    this.life = 0.16; this.maxLife = 0.16; this.color = color || '#ffd24a';
+  }
+  update(dt) { this.life -= dt; }
+  get dead() { return this.life <= 0; }
 }
 class DamageText {
-  constructor(x,y,val,color){ this.x=x;this.y=y;this.val=val;this.color=color||'#fff';
-    this.life=0.9; this.maxLife=0.9; }
-  update(dt){ this.y-=40*dt; this.life-=dt; }
-  get dead(){ return this.life<=0; }
+  constructor(x, y, val, color) {
+    this.x = x; this.y = y; this.val = val; this.color = color || '#fff';
+    this.life = 0.9; this.maxLife = 0.9;
+  }
+  update(dt) { this.y -= 45 * dt; this.life -= dt; }
+  get dead() { return this.life <= 0; }
 }
+
 class Drone {
   constructor(x, y, typeKey, lvl, player) {
     const base = ATTACK_UNITS[typeKey];
     const st = unitStat(base, lvl);
-    this.x=x; this.y=y; this.wx=x; this.wy=y;
+    this.x = x; this.y = y; this.wx = x; this.wy = y;
     this.typeKey = typeKey;
-    this.hp=st.hp; this.maxHp=st.hp;
-    this.speed=base.speed;
-    this.radius=base.radius;
-    this.damage=st.damage;
-    this.alive=true;
-    this.angle=-Math.PI/2;
-    this.hitFlash=0;
-    this.bob=Math.random()*Math.PI*2;
+    this.hp = st.hp; this.maxHp = st.hp;
+    this.speed = base.speed; this.radius = base.radius; this.damage = st.damage;
+    this.alive = true; this.angle = -Math.PI / 2;
+    this.hitFlash = 0; this.bob = Math.random() * Math.PI * 2;
     this.player = !!player;
     this.jamRadius = base.jamRadius || 0;
     this.jamDuration = base.jamDuration || 0;
-    this.jamming = false;
   }
-  update(dt){
+  update(dt) {
     if (!this.alive) return;
-    this.bob += dt*6;
-    const dx=this.wx-this.x, dy=this.wy-this.y;
-    const dist=Math.hypot(dx,dy);
-    if (dist>3){
-      const step=Math.min(dist, this.speed*dt);
-      this.x+=(dx/dist)*step; this.y+=(dy/dist)*step;
-      const ta=Math.atan2(dy,dx);
-      let da=ta-this.angle;
-      while(da>Math.PI) da-=Math.PI*2;
-      while(da<-Math.PI) da+=Math.PI*2;
-      this.angle += da*Math.min(1, dt*6);
+    this.bob += dt * 6;
+    const dx = this.wx - this.x, dy = this.wy - this.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist > 3) {
+      const step = Math.min(dist, this.speed * dt);
+      this.x += (dx / dist) * step; this.y += (dy / dist) * step;
+      const ta = Math.atan2(dy, dx);
+      let da = ta - this.angle;
+      while (da > Math.PI) da -= Math.PI * 2;
+      while (da < -Math.PI) da += Math.PI * 2;
+      this.angle += da * Math.min(1, dt * 6);
     }
-    if (this.hitFlash>0) this.hitFlash=Math.max(0, this.hitFlash-dt);
+    if (this.hitFlash > 0) this.hitFlash = Math.max(0, this.hitFlash - dt);
   }
 }
+
 class Turret {
   constructor(x, y, typeKey, lvl) {
     const base = DEFENSE_UNITS[typeKey];
     const st = unitStat(base, lvl);
-    this.x=x; this.y=y;
+    this.x = x; this.y = y;
     this.typeKey = typeKey;
     this.range = base.range;
     this.fireRate = base.fireRate;
     this.damage = st.damage;
     this.hp = st.hp; this.maxHp = st.hp;
-    this.cooldown=0;
-    this.alive=true;
-    this.angle=-Math.PI/2;
-    this.maxCooldown = 1/base.fireRate;
+    this.cooldown = 0; this.alive = true;
+    this.angle = -Math.PI / 2;
+    this.maxCooldown = 1 / base.fireRate;
     this.mobile = base.mobile;
     this.jamTime = 0;
   }
-  canFire(){ return this.cooldown <= 0 && this.jamTime <= 0; }
-  markFired(){ this.cooldown = this.maxCooldown; }
-  update(dt){
+  canFire() { return this.cooldown <= 0 && this.jamTime <= 0; }
+  markFired() { this.cooldown = this.maxCooldown; }
+  update(dt) {
     if (this.cooldown > 0) this.cooldown = Math.max(0, this.cooldown - dt);
     if (this.jamTime > 0) this.jamTime = Math.max(0, this.jamTime - dt);
   }
-  inRange(x,y){ return Math.hypot(x-this.x, y-this.y) <= this.range; }
-  aimAt(x,y){ this.angle = Math.atan2(y-this.y, x-this.x); }
+  inRange(x, y) { return Math.hypot(x - this.x, y - this.y) <= this.range; }
+  aimAt(x, y) { this.angle = Math.atan2(y - this.y, x - this.x); }
+}
+
+/* МОГ — мобильная огневая группа (пикап с турелью), едет туда-сюда по дороге */
+class MOG {
+  constructor(road, startT, speed, team) {
+    this.road = road;
+    this.t = startT;
+    this.dir = rnd() < 0.5 ? 1 : -1;
+    this.speed = speed;      // в единицах мира/сек
+    this.team = team;        // 'attack' (враги) или 'defense' (союзники)
+    this.x = 0; this.y = 0;
+    this.angle = 0;
+    this.turretAngle = -Math.PI / 2;
+    this.hp = 120; this.maxHp = 120;
+    this.alive = true;
+    this.range = 300;
+    this.fireRate = 5;
+    this.damage = 10;
+    this.cooldown = 0;
+    this.hitFlash = 0;
+    this.updateXY();
+  }
+  // Длина полилинии
+  pathLength() {
+    let L = 0;
+    for (let i = 0; i < this.road.pts.length - 1; i++) {
+      const a = this.road.pts[i], b = this.road.pts[i + 1];
+      L += Math.hypot(b.x - a.x, b.y - a.y);
+    }
+    return L;
+  }
+  updateXY() {
+    const pts = this.road.pts;
+    let total = 0; const segLens = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const a = pts[i], b = pts[i + 1];
+      const L = Math.hypot(b.x - a.x, b.y - a.y);
+      segLens.push(L); total += L;
+    }
+    let target = clamp(this.t, 0, 1) * total;
+    for (let i = 0; i < segLens.length; i++) {
+      if (target <= segLens[i]) {
+        const a = pts[i], b = pts[i + 1];
+        const k = segLens[i] > 0 ? target / segLens[i] : 0;
+        this.x = a.x + (b.x - a.x) * k;
+        this.y = a.y + (b.y - a.y) * k;
+        this.angle = Math.atan2(b.y - a.y, b.x - a.x) + (this.dir < 0 ? Math.PI : 0);
+        return;
+      }
+      target -= segLens[i];
+    }
+  }
+  update(dt) {
+    if (!this.alive) return;
+    if (this.cooldown > 0) this.cooldown = Math.max(0, this.cooldown - dt);
+    if (this.hitFlash > 0) this.hitFlash = Math.max(0, this.hitFlash - dt);
+    const L = this.pathLength();
+    const du = (this.speed * dt * this.dir) / L;
+    this.t += du;
+    if (this.t > 1) { this.t = 1; this.dir = -1; }
+    if (this.t < 0) { this.t = 0; this.dir = 1; }
+    this.updateXY();
+  }
+  canFire() { return this.alive && this.cooldown <= 0; }
+  markFired() { this.cooldown = 1 / this.fireRate; }
+  inRange(x, y) { return Math.hypot(x - this.x, y - this.y) <= this.range; }
+  aimAt(x, y) { this.turretAngle = Math.atan2(y - this.y, x - this.x); }
 }
 
 /* ============================================================
-   МИССИИ
+   10. МИССИИ
    ============================================================ */
 const MISSIONS = [
-  { id:'a1', side:'attack', name:'Первые вылеты',
-    brief:'Уничтожьте одиночную РЛС. Пробный вылет.',
-    playerUnits: [{ type:'kamikaze', count:3 }],
-    enemies: [{ type:'pkt', x:900, y:2200 }],
-    targetHp: 60, reward: 80,
-    starsHp: [20, 40, 60] },  // HP цели остался -> 3 звезды
-  { id:'a2', side:'attack', name:'Перехват',
-    brief:'Две огневые точки прикрывают подступы. Выбирайте фланг.',
-    playerUnits: [{ type:'kamikaze', count:4 }],
-    enemies: [{ type:'pkt', x:600, y:2200 }, { type:'pkt', x:1500, y:1900 }],
-    targetHp: 70, reward: 120,
-    starsHp: [15, 35, 55] },
-  { id:'a3', side:'attack', name:'Тяжёлый груз',
-    brief:'Разблокирован тяжёлый БПЛА. Одна из турелей — ЗУ-23-2.',
-    playerUnits: [{ type:'kamikaze', count:3 }, { type:'heavy', count:2 }],
+  { id: 'a1', side: 'attack', name: 'Первые вылеты',
+    brief: 'Уничтожьте одиночную огневую точку.',
+    playerUnits: [{ type: 'kamikaze', count: 3 }],
+    enemies: [{ type: 'pkt', x: 1900, y: 3800 }],
+    mogCount: 0,
+    targetHp: 60, reward: 80, starsHp: [20, 40, 60] },
+  { id: 'a2', side: 'attack', name: 'Патруль',
+    brief: 'На дороге патрулирует МОГ. Обойдите или подавите.',
+    playerUnits: [{ type: 'kamikaze', count: 4 }],
+    enemies: [{ type: 'pkt', x: 1400, y: 4200 }],
+    mogCount: 1,
+    targetHp: 70, reward: 120, starsHp: [15, 35, 55] },
+  { id: 'a3', side: 'attack', name: 'Тяжёлый груз',
+    brief: 'ЗУ-23-2 на маршруте. Разблокирован тяжёлый БПЛА.',
+    playerUnits: [{ type: 'kamikaze', count: 3 }, { type: 'heavy', count: 2 }],
+    enemies: [{ type: 'pkt', x: 800, y: 5000 }, { type: 'zu23', x: 2900, y: 3600 }],
+    mogCount: 2,
+    targetHp: 90, reward: 160, starsHp: [25, 55, 85] },
+  { id: 'a4', side: 'attack', name: 'Глушитель',
+    brief: 'РЭБ-БПЛА выключает турели в радиусе 240 на 4 сек.',
+    playerUnits: [{ type: 'jammer', count: 2 }, { type: 'kamikaze', count: 3 }, { type: 'heavy', count: 1 }],
+    enemies: [{ type: 'zu23', x: 1600, y: 5000 }, { type: 'zu23', x: 2700, y: 3400 }, { type: 'igla', x: 2000, y: 1700 }],
+    mogCount: 3,
+    targetHp: 90, reward: 220, starsHp: [25, 55, 85] },
+  { id: 'a5', side: 'attack', name: 'Крепость',
+    brief: 'Эшелонированная оборона. Используйте всё.',
+    playerUnits: [{ type: 'jammer', count: 2 }, { type: 'kamikaze', count: 4 }, { type: 'heavy', count: 2 }],
     enemies: [
-      { type:'pkt', x:700, y:2500 },
-      { type:'zu23', x:1400, y:1800 },
-      { type:'pkt', x:800, y:1100 }],
-    targetHp: 90, reward: 160,
-    starsHp: [25, 55, 85] },
-  { id:'a4', side:'attack', name:'Глушитель',
-    brief:'Разблокирован РЭБ-БПЛА. Он на 4 сек выключает турели в радиусе.',
-    playerUnits: [{ type:'jammer', count:2 }, { type:'kamikaze', count:3 }, { type:'heavy', count:1 }],
-    enemies: [
-      { type:'zu23', x:800, y:2400 },
-      { type:'zu23', x:1300, y:1700 },
-      { type:'igla', x:1000, y:800 }],
-    targetHp: 90, reward: 220,
-    starsHp: [25, 55, 85] },
-  { id:'a5', side:'attack', name:'Крепость',
-    brief:'Эшелонированная оборона. Используйте всё, чему научились.',
-    playerUnits: [{ type:'jammer', count:2 }, { type:'kamikaze', count:3 },
-                  { type:'heavy', count:2 }, { type:'kamikaze', count:2 }],
-    enemies: [
-      { type:'pkt', x:500, y:2900 }, { type:'zu23', x:1500, y:2600 },
-      { type:'pkt', x:1000, y:1900 }, { type:'igla', x:700, y:1300 },
-      { type:'zu23', x:1400, y:800 }],
-    targetHp: 110, reward: 320,
-    starsHp: [30, 60, 100] },
+      { type: 'pkt', x: 900, y: 5900 }, { type: 'zu23', x: 3000, y: 5300 },
+      { type: 'pkt', x: 2000, y: 4000 }, { type: 'igla', x: 1400, y: 2600 },
+      { type: 'zu23', x: 2800, y: 1600 }],
+    mogCount: 4,
+    targetHp: 110, reward: 320, starsHp: [30, 60, 100] },
 ];
 
 /* ============================================================
-   СОСТОЯНИЕ ИГРЫ
+   11. СОСТОЯНИЕ
    ============================================================ */
 const G = {
-  screen: 'menu',        // menu | campaign | briefing | upgrades | battle | victory | gameover
-  prevScreen: 'menu',
+  screen: 'menu',
   side: null,
   result: null,
   mission: null,
+  pendingMission: null,
   drones: [], turrets: [], tracers: [], particles: [], dmgTexts: [],
+  mogs: [],
   target: null,
   time: 0,
   spawnQueue: 0, spawnTimer: 0, spawnInterval: 3.0,
@@ -443,18 +676,20 @@ const G = {
   screenFlash: 0,
   draggingTurret: null,
   dragOffset: { x: 0, y: 0 },
-  // для атаки:
-  selectedUnits: [],  // очередь запуска
-  deployed: 0,
-  endlessWave: 0,
-  endlessScore: 0,
-  btnRects: [],   // для тапов по кнопкам в текущем кадре
+  selectedUnits: [], deployed: 0,
+  lastReward: null,
+  btnRects: [],
 };
 
 function setMessage(text, t) { G.message = text; G.messageTime = t || 3; }
 
+/* Выбор случайной дороги для МОГ */
+function pickRandomRoad() {
+  return terrain.roads[Math.floor(rnd() * terrain.roads.length)];
+}
+
 /* ============================================================
-   СТАРТ МИССИИ
+   12. СТАРТ МИССИИ
    ============================================================ */
 function startMission(mission) {
   G.mission = mission;
@@ -462,6 +697,7 @@ function startMission(mission) {
   G.screen = 'battle';
   G.result = null;
   G.drones = []; G.turrets = []; G.tracers = []; G.particles = []; G.dmgTexts = [];
+  G.mogs = [];
   G.time = 0; G.messageTime = 0; G.screenFlash = 0;
   G.draggingTurret = null;
   cam.follow = (mission.side === 'attack');
@@ -470,87 +706,420 @@ function startMission(mission) {
   if (mission.side === 'attack') {
     G.target = { x: TARGET_X, y: TARGET_Y, radius: TARGET_R,
                  hp: mission.targetHp, maxHp: mission.targetHp };
-    // Вражеские турели
-    for (const e of mission.enemies) {
-      const t = new Turret(e.x, e.y, e.type, e.lvl || 1);
-      G.turrets.push(t);
+    for (const e of mission.enemies)
+      G.turrets.push(new Turret(e.x, e.y, e.type, e.lvl || 1));
+
+    // Вражеские МОГи на дорогах
+    for (let i = 0; i < (mission.mogCount || 0); i++) {
+      const road = pickRandomRoad();
+      G.mogs.push(new MOG(road, rr(0.15, 0.85), rr(60, 110), 'attack'));
     }
-    // Очередь вылетов игрока
+
     G.selectedUnits = [];
-    for (const pu of mission.playerUnits) {
+    for (const pu of mission.playerUnits)
       for (let i = 0; i < pu.count; i++) G.selectedUnits.push(pu.type);
-    }
     G.deployed = 0;
-    cam.x = 1000; cam.y = 3300;
-    cam.zoom = cam.targetZoom = 0.85;
-    setMessage('Тап по карте — точка сбора. Тап «▲» — запуск БПЛА', 5);
-  } else {
-    // Оборона
-    G.target = { x: TARGET_X, y: TARGET_Y, radius: TARGET_R, hp: 100, maxHp: 100 };
-    G.placement = { active: true, placed: 0, required: 4, queue: ['pkt','pkt','zu23','pkt'] };
-    G.spawnQueue = mission.enemies ? mission.enemies.length : 6;
-    G.waves = mission.enemies || null;
-    if (!G.waves) G.spawnQueue = 6;
-    cam.x = TARGET_X; cam.y = 1400;
+
+    cam.x = 2000; cam.y = 6500;
     cam.zoom = cam.targetZoom = 0.55;
-    setMessage('Расставьте турели: ' + (G.placement.queue[0] ? DEFENSE_UNITS[G.placement.queue[0]].name : '') , 4);
+    setMessage('Тап по карте — запуск БПЛА. Кнопка ▶ — старт в центр экрана.', 5);
+  } else {
+    G.target = { x: TARGET_X, y: TARGET_Y, radius: TARGET_R, hp: 100, maxHp: 100 };
+    G.placement = { active: true, placed: 0, required: 4,
+                    queue: ['pkt', 'pkt', 'zu23', 'pkt'] };
+    G.spawnQueue = (mission.enemies && mission.enemies.length) || 6;
+    cam.x = TARGET_X; cam.y = 3000;
+    cam.zoom = cam.targetZoom = 0.4;
+
+    // Союзные МОГи на дорогах
+    for (let i = 0; i < (mission.mogCount || 2); i++) {
+      const road = pickRandomRoad();
+      G.mogs.push(new MOG(road, rr(0.15, 0.85), rr(70, 120), 'defense'));
+    }
+
+    setMessage('Расставьте турели. МОГи союзников патрулируют дороги.', 5);
   }
   clampCamera();
 }
 
 function startEndless() {
   const mission = {
-    id: 'endless', side: 'defense', name:'Полигон',
-    brief:'Бесконечные волны. Рекорд: ' + (Save.endlessBest || 0),
-    enemies: null, reward: 0,
+    id: 'endless', side: 'defense', name: 'Полигон',
+    brief: 'Бесконечные волны. Рекорд: ' + (Save.opBest || 0),
+    enemies: null, mogCount: 3, reward: 0,
   };
-  G.endlessWave = 0;
-  G.endlessScore = 0;
   startMission(mission);
-  G.waves = null;
   G.spawnQueue = 9999;
   G.spawnInterval = 3.5;
-  setMessage('Полигон: каждая 10-я волна — сложнее', 4);
 }
 
 /* ============================================================
-   СПАВН ВРАГОВ (оборона)
+   13. ОПЕРАТОР (вид от первого лица с турели в МОГе)
    ============================================================ */
-function spawnEnemyDrone() {
-  const x = rr(300, WORLD_W - 300);
-  const types = ['kamikaze','kamikaze','kamikaze','heavy'];
-  const tk = types[Math.floor(rnd() * types.length)];
-  const lvl = clamp(1 + Math.floor((G.endlessWave || 0) / 3), 1, 5);
-  const d = new Drone(x, WORLD_H - 80, tk, lvl, false);
-  d.wx = G.target.x + rr(-100, 100);
-  d.wy = G.target.y + rr(-20, 20);
-  d.speed = rr(110, 155);
-  d.hp = Math.round(d.maxHp * 0.6);
-  d.maxHp = d.hp;
-  G.drones.push(d);
+const op = {
+  active: false,
+  yaw: -Math.PI / 2,       // куда смотрит турель
+  pitch: 0.12,             // наклон вверх
+  fovH: Math.PI * 0.85,    // горизонтальный обзор ~153°
+  fovV: Math.PI * 0.55,    // вертикальный ~99°
+  drones: [],
+  bullets: [],
+  hp: 100, maxHp: 100,
+  wave: 0,
+  waveTimer: 2.0,
+  score: 0,
+  fireCD: 0,
+  dronesRemaining: 0,
+  bob: 0,
+};
+
+function opStart() {
+  op.active = true;
+  op.yaw = -Math.PI / 2;
+  op.pitch = 0.12;
+  op.drones = [];
+  op.bullets = [];
+  op.hp = op.maxHp;
+  op.wave = 0;
+  op.waveTimer = 1.5;
+  op.score = 0;
+  op.fireCD = 0;
+  op.bob = 0;
+  op.dronesRemaining = 0;
+}
+
+function opSpawnWave() {
+  op.wave++;
+  const n = 2 + Math.floor(op.wave * 0.7);
+  op.dronesRemaining = n;
+  for (let i = 0; i < n; i++) {
+    const a = rnd() < 0.5 ? rr(-1.1, -0.3) : rr(0.3, 1.1);
+    const dist = rr(280, 500);
+    op.drones.push({
+      x: Math.cos(a) * dist, y: Math.sin(a) * dist,
+      z: rr(25, 60),
+      hp: 20 + op.wave * 2, maxHp: 20 + op.wave * 2,
+      speed: rr(18, 30) + op.wave * 0.6,
+      alive: true, hitFlash: 0, wobble: rnd() * Math.PI * 2,
+    });
+  }
+}
+
+function opProject(d) {
+  const dist = Math.hypot(d.x, d.y);
+  const wa = Math.atan2(d.y, d.x);
+  let rel = wa - op.yaw;
+  while (rel > Math.PI) rel -= Math.PI * 2;
+  while (rel < -Math.PI) rel += Math.PI * 2;
+  const vis = Math.abs(rel) < op.fovH / 2;
+  const sx = Math.tan(rel) / Math.tan(op.fovH / 2) * (W / 2);
+  const screenX = W / 2 + sx;
+  const elev = Math.atan2(d.z, dist);
+  const relElev = elev - op.pitch;
+  const sy = Math.tan(relElev) / Math.tan(op.fovV / 2) * (H / 2);
+  const screenY = H / 2 - sy;
+  return { sx: screenX, sy: screenY, dist, vis };
+}
+
+function opUpdate(dt) {
+  if (!op.active) return;
+  // Бобинг камеры (имитация езды МОГа)
+  op.bob += dt * 3;
+  // Управление беспилотниками
+  for (const d of op.drones) {
+    if (!d.alive) continue;
+    d.wobble += dt * 3;
+    const dist = Math.hypot(d.x, d.y);
+    const nx = -d.x / dist, ny = -d.y / dist;
+    d.x += nx * d.speed * dt;
+    d.y += ny * d.speed * dt;
+    d.z += Math.sin(d.wobble) * 0.5 * dt;
+    if (d.hitFlash > 0) d.hitFlash = Math.max(0, d.hitFlash - dt);
+    // Долетел до МОГа — урон
+    if (dist < 25) {
+      d.alive = false;
+      op.hp -= 12;
+      op.dronesRemaining = Math.max(0, op.dronesRemaining - 1);
+      sfxExplode();
+    }
+  }
+  // Пули
+  for (let i = op.bullets.length - 1; i >= 0; i--) {
+    op.bullets[i].life -= dt;
+    if (op.bullets[i].life <= 0) op.bullets.splice(i, 1);
+  }
+  // Очередь волн
+  if (op.dronesRemaining === 0 && op.drones.every(d => !d.alive)) {
+    op.waveTimer -= dt;
+    if (op.waveTimer <= 0) {
+      opSpawnWave();
+      op.waveTimer = 3.0;
+    }
+  }
+  if (op.fireCD > 0) op.fireCD = Math.max(0, op.fireCD - dt);
+  // Конец
+  if (op.hp <= 0) {
+    op.active = false;
+    if (op.score > (Save.opBest || 0)) { Save.opBest = op.score; commitSave(); }
+    G.screen = 'opEnd';
+    sfxLose();
+  }
+}
+
+function opFire() {
+  if (!op.active || op.fireCD > 0) return;
+  op.fireCD = 0.09;
+  sfxMG();
+  vibrate(8);
+  // Ищем дрон ближе всего к перекрестью
+  let best = null, bestAng = Infinity;
+  for (const d of op.drones) {
+    if (!d.alive) continue;
+    const p = opProject(d);
+    if (!p.vis) continue;
+    // угловое расстояние от центра экрана
+    const dx = p.sx - W / 2, dy = p.sy - H / 2;
+    const ang = Math.hypot(dx, dy) / Math.max(W, H);
+    if (ang < 0.14 && ang < bestAng) { bestAng = ang; best = d; }
+  }
+  // Визуал пули
+  op.bullets.push({ life: 0.08, maxLife: 0.08 });
+  if (best) {
+    best.hp -= 12;
+    best.hitFlash = 0.08;
+    if (best.hp <= 0) {
+      best.alive = false;
+      op.score += 100;
+      op.dronesRemaining = Math.max(0, op.dronesRemaining - 1);
+      sfxExplode();
+    } else sfxHit();
+  }
+}
+
+function opDraw() {
+  const t = now() / 1000;
+  const bobY = Math.sin(op.bob) * 3;
+
+  // Небо
+  const horizonY = H * 0.5 + bobY + op.pitch * H * 0.5;
+  const sky = ctx.createLinearGradient(0, 0, 0, horizonY);
+  sky.addColorStop(0, '#1b2d3e');
+  sky.addColorStop(1, '#4a5c6e');
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, W, horizonY);
+
+  // Земля
+  const ground = ctx.createLinearGradient(0, horizonY, 0, H);
+  ground.addColorStop(0, '#3c4a24');
+  ground.addColorStop(1, '#1a2410');
+  ctx.fillStyle = ground;
+  ctx.fillRect(0, horizonY, W, H - horizonY);
+
+  // Далёкие силуэты зданий на горизонте
+  ctx.save();
+  ctx.globalAlpha = 0.5;
+  ctx.fillStyle = '#2a3542';
+  for (let i = 0; i < 20; i++) {
+    const bx = ((i * 173) % W) - 40;
+    const bh = 18 + ((i * 47) % 55);
+    ctx.fillRect(bx, horizonY - bh, 60 + ((i * 31) % 50), bh);
+  }
+  ctx.restore();
+
+  // Дорога внизу — перспектива
+  ctx.fillStyle = '#2a2a2a';
+  ctx.beginPath();
+  ctx.moveTo(W / 2 - 30, horizonY);
+  ctx.lineTo(W / 2 + 30, horizonY);
+  ctx.lineTo(W * 0.95, H);
+  ctx.lineTo(W * 0.05, H);
+  ctx.closePath(); ctx.fill();
+
+  // Разметка дороги
+  ctx.strokeStyle = 'rgba(240,220,120,0.5)';
+  ctx.lineWidth = 2;
+  const segs = 10;
+  for (let i = 0; i < segs; i++) {
+    const p = (i + (t * 0.6) % 1) / segs;
+    const y1 = horizonY + (H - horizonY) * p * p;
+    const y2 = horizonY + (H - horizonY) * Math.min(1, (p + 0.04)) * Math.min(1, (p + 0.04));
+    const w1 = 3 + 30 * p * p;
+    const w2 = 3 + 30 * Math.min(1, p + 0.04) * Math.min(1, p + 0.04);
+    ctx.beginPath();
+    ctx.moveTo(W / 2 - w1 / 2, y1);
+    ctx.lineTo(W / 2 + w1 / 2, y1);
+    ctx.lineTo(W / 2 + w2 / 2, y2);
+    ctx.lineTo(W / 2 - w2 / 2, y2);
+    ctx.closePath(); ctx.fillStyle = 'rgba(240,220,120,0.45)'; ctx.fill();
+  }
+
+  // Дроны (сортируем по дальности — далёкие сначала)
+  const proj = op.drones.filter(d => d.alive).map(d => ({ d, p: opProject(d) }));
+  proj.sort((a, b) => b.p.dist - a.p.dist);
+
+  for (const { d, p } of proj) {
+    if (!p.vis) continue;
+    // Размер с учётом расстояния
+    const size = clamp(900 / (p.dist + 60), 6, 90);
+    const wobY = Math.sin(d.wobble) * size * 0.15;
+    ctx.save();
+    ctx.translate(p.sx, p.sy + wobY);
+
+    // Тень на земле (для читаемости)
+    ctx.globalAlpha = 0.35;
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(0, (H - p.sy) * 0.15, size * 0.8, size * 0.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    // Миньон/дрон — дельтакрыло
+    ctx.rotate(-0.15);
+    ctx.fillStyle = d.hitFlash > 0 ? '#ffffff' : '#b89a8a';
+    ctx.strokeStyle = '#2a3a4a';
+    ctx.lineWidth = Math.max(1, size * 0.05);
+    ctx.beginPath();
+    ctx.moveTo(0, -size * 0.5);
+    ctx.lineTo(size * 0.9, size * 0.3);
+    ctx.lineTo(0, size * 0.1);
+    ctx.lineTo(-size * 0.9, size * 0.3);
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+
+    // Нос
+    ctx.fillStyle = d.hitFlash > 0 ? '#ffcc33' : '#c84a3a';
+    ctx.beginPath();
+    ctx.arc(0, -size * 0.4, size * 0.12, 0, Math.PI * 2);
+    ctx.fill();
+
+    // HP-бар
+    if (d.hp < d.maxHp) {
+      const bw = size * 1.2, bh = Math.max(2, size * 0.08);
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(-bw / 2, -size * 0.75, bw, bh);
+      ctx.fillStyle = '#ff5555';
+      ctx.fillRect(-bw / 2, -size * 0.75, bw * (d.hp / d.maxHp), bh);
+    }
+    ctx.restore();
+  }
+
+  // Пули-вспышки у дула (внизу экрана)
+  if (op.bullets.length > 0) {
+    const b = op.bullets[0];
+    const a = b.life / b.maxLife;
+    ctx.globalAlpha = a * 0.85;
+    ctx.fillStyle = '#ffe066';
+    ctx.beginPath();
+    ctx.arc(W / 2, H - 60, 30 * a + 15, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
+  // Прицел (крест)
+  const cx = W / 2, cy = H / 2;
+  ctx.strokeStyle = '#ff4a4a';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(cx - 22, cy); ctx.lineTo(cx - 8, cy);
+  ctx.moveTo(cx + 8, cy);  ctx.lineTo(cx + 22, cy);
+  ctx.moveTo(cx, cy - 22); ctx.lineTo(cx, cy - 8);
+  ctx.moveTo(cx, cy + 8);  ctx.lineTo(cx, cy + 22);
+  ctx.stroke();
+  ctx.beginPath(); ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+  ctx.fillStyle = '#ff4a4a'; ctx.fill();
+
+  // Корпус пулемёта (внизу экрана)
+  ctx.fillStyle = '#3a4048';
+  ctx.fillRect(W / 2 - 40, H - 40, 80, 40);
+  ctx.fillStyle = '#5a6068';
+  ctx.fillRect(W / 2 - 12, H - 70, 24, 40);
+
+  // Прицел-панорама: стрелка в сторону дрона
+  let nearest = null, nearestAng = Infinity;
+  for (const d of op.drones) {
+    if (!d.alive) continue;
+    const p = opProject(d);
+    const ang = Math.abs(p.sx - W / 2);
+    if (ang < nearestAng) { nearestAng = ang; nearest = p; }
+  }
+  if (nearest && !nearest.vis) {
+    const dir = nearest.sx < W / 2 ? -1 : 1;
+    ctx.fillStyle = 'rgba(255,80,80,0.85)';
+    ctx.beginPath();
+    ctx.moveTo(W / 2 + dir * (W * 0.42), H / 2);
+    ctx.lineTo(W / 2 + dir * (W * 0.42 - 20), H / 2 - 14);
+    ctx.lineTo(W / 2 + dir * (W * 0.42 - 20), H / 2 + 14);
+    ctx.closePath(); ctx.fill();
+  }
+
+  // HUD
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(0, 0, W, 48);
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 15px -apple-system,sans-serif';
+  ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
+  ctx.fillText('ОПЕРАТОР · волна ' + op.wave, 16, 24);
+  ctx.textAlign = 'right';
+  ctx.fillText('Очки: ' + op.score, W - 16, 24);
+
+  // HP МОГа
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  roundRect(ctx, 16, H - 40, W * 0.4, 12, 6); ctx.fill();
+  const p = clamp(op.hp / op.maxHp, 0, 1);
+  ctx.fillStyle = p > 0.5 ? '#44dd66' : (p > 0.25 ? '#ffaa33' : '#ff4444');
+  roundRect(ctx, 18, H - 38, (W * 0.4 - 4) * p, 8, 4); ctx.fill();
+
+  // Кнопка огня
+  const fb = { x: W - 110, y: H - 130, r: 60 };
+  ctx.fillStyle = 'rgba(200,60,40,0.85)';
+  ctx.beginPath(); ctx.arc(fb.x, fb.y, fb.r, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#ffaa33'; ctx.lineWidth = 3;
+  ctx.beginPath(); ctx.arc(fb.x, fb.y, fb.r, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 20px -apple-system,sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('ОГОНЬ', fb.x, fb.y);
+  ctx.font = '11px -apple-system,sans-serif';
+  ctx.fillText('удерживай', fb.x, fb.y + 20);
+  G._opFireBtn = fb;
+
+  // Кнопка меню
+  const mb = { x: 14, y: 58, w: 80, h: 32 };
+  ctx.fillStyle = 'rgba(20,30,45,0.85)';
+  roundRect(ctx, mb.x, mb.y, mb.w, mb.h, 8); ctx.fill();
+  ctx.strokeStyle = 'rgba(150,180,210,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
+  ctx.fillStyle = '#e8f4ff';
+  ctx.font = 'bold 13px -apple-system,sans-serif';
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillText('‹ ВЫЙТИ', mb.x + mb.w / 2, mb.y + mb.h / 2);
+  G._opMenuBtn = mb;
+
+  // Подсказка на первые секунды
+  if (op.wave === 0 && op.waveTimer > 1.0) {
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.font = 'bold 17px -apple-system,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Свайп влево/вправо — поворот', W / 2, H * 0.72);
+    ctx.fillText('Кнопка ОГОНЬ — стрельба', W / 2, H * 0.72 + 26);
+  }
 }
 
 /* ============================================================
-   БОЕВАЯ ЛОГИКА
+   14. БОЕВАЯ ЛОГИКА (вид сверху)
    ============================================================ */
-function damageDrone(d, dmg, fromX, fromY) {
+function damageDrone(d, dmg) {
   if (!d.alive) return;
   d.hp -= dmg; d.hitFlash = 0.12;
-  const dx = d.x + rr(-8, 8), dy = d.y - 26 + rr(-4, 4);
-  G.dmgTexts.push(new DamageText(dx, dy, dmg, '#ffcc33'));
+  G.dmgTexts.push(new DamageText(d.x + rr(-8, 8), d.y - 26, dmg, '#ffcc33'));
   sfxHit();
   if (d.hp <= 0) {
     d.alive = false;
-    explode(d.x, d.y, false);
-    sfxExplode();
-    shakeCamera(3, 0.15);
+    explode(d.x, d.y, false); sfxExplode(); shakeCamera(3, 0.15);
   }
 }
 function explode(x, y, big) {
   const n = big ? 60 : 30;
   for (let i = 0; i < n; i++) {
-    G.particles.push(new Particle(x, y,
-      rr(-450, 450), rr(-450, 450),
+    G.particles.push(new Particle(x, y, rr(-450, 450), rr(-450, 450),
       rr(0.7, 1.7),
       i % 3 === 0 ? '#ffffff' : (i % 3 === 1 ? '#ffcc33' : '#ff5522'),
       big ? 6 : 5));
@@ -558,22 +1127,27 @@ function explode(x, y, big) {
 }
 function fireTurretAt(t, tx, ty) {
   t.markFired(); t.aimAt(tx, ty);
-  G.tracers.push(new Tracer(t.x, t.y, tx, ty));
+  G.tracers.push(new Tracer(t.x, t.y, tx, ty)); sfxShot();
+  for (let i = 0; i < 3; i++)
+    G.particles.push(new Particle(t.x + Math.cos(t.angle) * 24, t.y + Math.sin(t.angle) * 24,
+      rr(-80, 80), rr(-80, 80), 0.25, '#ffd24a', 3));
+}
+function fireMOGAt(m, tx, ty) {
+  m.markFired(); m.aimAt(tx, ty);
+  G.tracers.push(new Tracer(m.x, m.y, tx, ty, '#aaffaa'));
   sfxShot();
   for (let i = 0; i < 3; i++)
-    G.particles.push(new Particle(
-      t.x + Math.cos(t.angle) * 24, t.y + Math.sin(t.angle) * 24,
-      rr(-80, 80), rr(-80, 80), 0.25, '#ffd24a', 3));
+    G.particles.push(new Particle(m.x + Math.cos(m.turretAngle) * 20, m.y + Math.sin(m.turretAngle) * 20,
+      rr(-80, 80), rr(-80, 80), 0.22, '#ffd24a', 2));
 }
 
 function tryLaunchDrone(wx, wy) {
   if (G.deployed >= G.selectedUnits.length) return;
   const tk = G.selectedUnits[G.deployed];
   const lvl = Save.upgrades[tk] || 1;
-  // Стартовая точка — юг карты
-  const startX = clamp(wx + rr(-40, 40), 60, WORLD_W - 60);
-  const startY = WORLD_H - 100;
-  const d = new Drone(startX, startY, tk, lvl, true);
+  const sx = clamp(wx + rr(-40, 40), 60, WORLD_W - 60);
+  const sy = WORLD_H - 100;
+  const d = new Drone(sx, sy, tk, lvl, true);
   d.wx = wx; d.wy = wy;
   G.drones.push(d);
   G.deployed++;
@@ -584,15 +1158,10 @@ function updateAttack(dt) {
   for (const d of G.drones) {
     if (!d.alive) continue;
     d.update(dt);
-
-    // РЭБ: глушит турели
     if (d.typeKey === 'jammer' && d.jamRadius > 0) {
-      for (const t of G.turrets) {
+      for (const t of G.turrets)
         if (Math.hypot(t.x - d.x, t.y - d.y) < d.jamRadius) t.jamTime = d.jamDuration;
-      }
     }
-
-    // Турели стреляют
     for (const t of G.turrets) {
       if (!t.alive || !t.canFire()) continue;
       if (!t.inRange(d.x, d.y)) continue;
@@ -601,51 +1170,67 @@ function updateAttack(dt) {
       if (!d.alive) break;
     }
     if (!d.alive) continue;
-
-    // Достиг цели
+    // Вражеские МОГи стреляют по нашим дронам
+    for (const m of G.mogs) {
+      if (m.team !== 'attack' || !m.canFire()) continue;
+      if (!m.inRange(d.x, d.y)) continue;
+      fireMOGAt(m, d.x, d.y);
+      damageDrone(d, m.damage);
+      if (!d.alive) break;
+    }
+    if (!d.alive) continue;
     if (G.target) {
       const dist = Math.hypot(G.target.x - d.x, G.target.y - d.y);
       if (dist < G.target.radius + d.radius) {
         if (d.damage > 0) {
           G.target.hp -= d.damage;
-          G.dmgTexts.push(new DamageText(G.target.x + rr(-30,30), G.target.y - 40, d.damage, '#ff8844'));
-          G.screenFlash = 0.3;
-          shakeCamera(5, 0.2);
-          explode(d.x, d.y, true);
-          sfxExplode();
+          G.dmgTexts.push(new DamageText(G.target.x + rr(-30, 30), G.target.y - 60, d.damage, '#ff8844'));
+          G.screenFlash = 0.3; shakeCamera(5, 0.2); explode(d.x, d.y, true); sfxExplode();
         }
         d.alive = false;
       }
     }
   }
   if (G.target.hp <= 0) finishMission();
-  else if (G.drones.every(d => !d.alive) && G.deployed >= G.selectedUnits.length) {
-    finishMission();
-  }
+  else if (G.drones.every(d => !d.alive) && G.deployed >= G.selectedUnits.length) finishMission();
+}
+
+function spawnEnemyDrone() {
+  const x = rr(400, WORLD_W - 400);
+  const types = ['kamikaze', 'kamikaze', 'kamikaze', 'heavy'];
+  const tk = types[Math.floor(rnd() * types.length)];
+  const lvl = clamp(1 + Math.floor((G.time / 45) | 0), 1, 5);
+  const d = new Drone(x, WORLD_H - 120, tk, lvl, false);
+  d.wx = G.target.x + rr(-120, 120);
+  d.wy = G.target.y + rr(-20, 20);
+  d.speed = rr(110, 155);
+  d.hp = Math.round(d.maxHp * 0.7); d.maxHp = d.hp;
+  G.drones.push(d);
 }
 
 function updateDefense(dt) {
   if (G.placement.active) return;
-
   if (G.spawnQueue > 0) {
     G.spawnTimer -= dt;
     if (G.spawnTimer <= 0) {
       spawnEnemyDrone();
-      if (G.mission && G.mission.id !== 'endless') G.spawnQueue--;
-      else if (G.mission && G.mission.id === 'endless') {
-        G.endlessWave++;
-        G.spawnInterval = Math.max(1.8, 3.5 - G.endlessWave * 0.15);
-      }
+      if (G.mission.id !== 'endless') G.spawnQueue--;
       G.spawnTimer = G.spawnInterval;
-      if (G.mission && G.mission.id !== 'endless' && G.spawnQueue === 0)
-        setMessage('Последняя цель!', 2);
+      if (G.mission.id !== 'endless' && G.spawnQueue === 0) setMessage('Последняя цель!', 2);
     }
   }
-
   for (const d of G.drones) {
     if (!d.alive) continue;
     d.update(dt);
-    // РЭБ-эффект на турели от вражеских дронов-камикадзе не применяется; здесь только движение
+    // Союзные МОГи стреляют по врагам
+    for (const m of G.mogs) {
+      if (m.team !== 'defense' || !m.canFire()) continue;
+      if (!m.inRange(d.x, d.y)) continue;
+      fireMOGAt(m, d.x, d.y);
+      damageDrone(d, m.damage);
+      if (!d.alive) break;
+    }
+    if (!d.alive) continue;
     if (G.target) {
       const dist = Math.hypot(G.target.x - d.x, G.target.y - d.y);
       if (dist < G.target.radius + d.radius) {
@@ -656,27 +1241,24 @@ function updateDefense(dt) {
       }
     }
   }
-
   if (G.target.hp <= 0) { G.result = 'lose'; finishMission(); }
-  else if (G.mission.id !== 'endless' && G.spawnQueue === 0 && G.drones.every(d => !d.alive)) {
+  else if (G.mission.id !== 'endless' && G.spawnQueue === 0 && G.drones.every(d => !d.alive))
     finishMission();
-  }
 }
 
 function computeStars() {
   if (G.side === 'attack') {
     if (G.target.hp <= 0) return 1;
-    const remaining = G.target.hp;
+    const rem = G.target.hp;
     const [s1, s2, s3] = G.mission.starsHp;
-    if (remaining >= s3) return 3;
-    if (remaining >= s2) return 2;
-    return 1;
-  } else {
-    const hp = G.target.hp;
-    if (hp >= 100) return 3;
-    if (hp >= 60) return 2;
+    if (rem >= s3) return 3;
+    if (rem >= s2) return 2;
     return 1;
   }
+  const hp = G.target.hp;
+  if (hp >= 100) return 3;
+  if (hp >= 60) return 2;
+  return 1;
 }
 
 function finishMission() {
@@ -685,38 +1267,29 @@ function finishMission() {
     : (G.target.hp > 0 && G.mission.id !== 'endless');
   G.result = win ? 'win' : 'lose';
   G.screen = 'victory';
-
   if (G.mission.id === 'endless') {
-    if (G.endlessScore > (Save.endlessBest || 0)) {
-      Save.endlessBest = G.endlessScore;
-      commitSave();
-    }
+    if (G.time > (Save.endlessBest || 0)) { Save.endlessBest = G.time; commitSave(); }
     sfxLose();
     return;
   }
-
   if (win) {
     const stars = computeStars();
-    const id = G.mission.id;
-    const prev = Save.stars[id] || 0;
-    if (stars > prev) Save.stars[id] = stars;
+    const prev = Save.stars[G.mission.id] || 0;
+    if (stars > prev) Save.stars[G.mission.id] = stars;
     const reward = G.mission.reward + stars * 40;
     Save.credits = (Save.credits || 0) + reward;
     G.lastReward = { credits: reward, stars };
-    // Анлоки
-    if (id === 'a1') Save.unlocked.attack.heavy = true;
-    if (id === 'a2') Save.unlocked.attack.jammer = true;
-    if (id === 'a3') { Save.unlocked.defense.zu23 = true; }
-    if (id === 'a4') { Save.unlocked.defense.igla = true; }
+    if (G.mission.id === 'a1') Save.unlocked.attack.heavy = true;
+    if (G.mission.id === 'a2') Save.unlocked.attack.jammer = true;
+    if (G.mission.id === 'a3') Save.unlocked.defense.zu23 = true;
+    if (G.mission.id === 'a4') Save.unlocked.defense.igla = true;
     commitSave();
     sfxWin();
-  } else {
-    sfxLose();
-  }
+  } else sfxLose();
 }
 
 /* ============================================================
-   КАМЕРА / ОБНОВЛЕНИЕ
+   15. ОБНОВЛЕНИЕ
    ============================================================ */
 function updateCamera(dt) {
   if (cam.follow && G.side === 'attack') {
@@ -741,16 +1314,19 @@ function updateCamera(dt) {
 }
 
 function update(dt) {
-  for (let i = G.tracers.length-1; i >= 0; i--) {
-    G.tracers[i].update(dt); if (G.tracers[i].dead) G.tracers.splice(i,1);
+  if (op.active) { opUpdate(dt); return; }
+
+  for (let i = G.tracers.length - 1; i >= 0; i--) {
+    G.tracers[i].update(dt); if (G.tracers[i].dead) G.tracers.splice(i, 1);
   }
-  for (let i = G.particles.length-1; i >= 0; i--) {
-    G.particles[i].update(dt); if (G.particles[i].dead) G.particles.splice(i,1);
+  for (let i = G.particles.length - 1; i >= 0; i--) {
+    G.particles[i].update(dt); if (G.particles[i].dead) G.particles.splice(i, 1);
   }
-  for (let i = G.dmgTexts.length-1; i >= 0; i--) {
-    G.dmgTexts[i].update(dt); if (G.dmgTexts[i].dead) G.dmgTexts.splice(i,1);
+  for (let i = G.dmgTexts.length - 1; i >= 0; i--) {
+    G.dmgTexts[i].update(dt); if (G.dmgTexts[i].dead) G.dmgTexts.splice(i, 1);
   }
   for (const t of G.turrets) t.update(dt);
+  for (const m of G.mogs) m.update(dt);
   if (G.screenFlash > 0) G.screenFlash = Math.max(0, G.screenFlash - dt);
 
   if (G.screen !== 'battle') return;
@@ -758,21 +1334,19 @@ function update(dt) {
   if (G.messageTime > 0) G.messageTime = Math.max(0, G.messageTime - dt);
 
   updateCamera(dt);
-
   if (G.side === 'attack') updateAttack(dt);
-  else                     updateDefense(dt);
+  else updateDefense(dt);
 }
 
 /* ============================================================
-   ДЕЙСТВИЯ
+   16. ДЕЙСТВИЯ (вид сверху)
    ============================================================ */
 function tryPlaceTurret(x, y) {
   if (x < PLACE_ZONE.x1 || x > PLACE_ZONE.x2 || y < PLACE_ZONE.y1 || y > PLACE_ZONE.y2) {
     setMessage('Вне зоны размещения', 1.5); return;
   }
-  for (const t of G.turrets) {
-    if (Math.hypot(t.x - x, t.y - y) < 130) { setMessage('Слишком близко', 1.5); return; }
-  }
+  for (const t of G.turrets)
+    if (Math.hypot(t.x - x, t.y - y) < 180) { setMessage('Слишком близко', 1.5); return; }
   const tk = G.placement.queue[G.placement.placed] || 'pkt';
   const lvl = Save.upgrades[tk] || 1;
   G.turrets.push(new Turret(x, y, tk, lvl));
@@ -784,10 +1358,9 @@ function tryPlaceTurret(x, y) {
     G.spawnTimer = 2.0;
   } else {
     const nk = G.placement.queue[G.placement.placed];
-    setMessage(`Поставить: ${DEFENSE_UNITS[nk].name} (${G.placement.placed+1}/${G.placement.required})`, 4);
+    setMessage(`Поставить: ${DEFENSE_UNITS[nk].name} (${G.placement.placed + 1}/${G.placement.required})`, 4);
   }
 }
-
 function fireAllTurrets() {
   for (const t of G.turrets) {
     if (!t.alive || !t.canFire()) continue;
@@ -802,95 +1375,64 @@ function fireAllTurrets() {
     damageDrone(best, t.damage);
   }
 }
-
 function setAttackWaypoint(wx, wy) {
-  const offsets = [[-80,0],[0,-50],[80,0],[0,50],[-40,-30],[40,30]];
+  const offs = [[-90, 0], [0, -60], [90, 0], [0, 60], [-50, -40], [50, 40]];
   for (let i = 0; i < G.drones.length; i++) {
     const d = G.drones[i]; if (!d.alive) continue;
-    const o = offsets[i % offsets.length];
+    const o = offs[i % offs.length];
     d.wx = clamp(wx + o[0], 30, WORLD_W - 30);
     d.wy = clamp(wy + o[1], 30, WORLD_H - 30);
   }
 }
 
 /* ============================================================
-   UI-КНОПКИ (рисуются в HUD, нажатия обрабатываются)
+   17. UI-КНОПКИ
    ============================================================ */
-function drawButton(x, y, w, h, label, active) {
-  ctx.fillStyle = active ? 'rgba(90,200,255,0.35)' : 'rgba(20,30,45,0.85)';
-  roundRect(ctx, x, y, w, h, 10); ctx.fill();
-  ctx.strokeStyle = active ? '#5ac8ff' : 'rgba(150,180,210,0.6)';
-  ctx.lineWidth = 2;
-  roundRect(ctx, x, y, w, h, 10); ctx.stroke();
-  ctx.fillStyle = '#e8f4ff';
-  ctx.font = 'bold 15px -apple-system,sans-serif';
-  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(label, x + w/2, y + h/2);
-}
-
 function hitRect(px, py, r) { return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h; }
 
 function getBattleUI() {
   const btns = {};
-  const pad = 22;
-  const r = 26;
+  const pad = 22, r = 26;
   btns.zoomIn  = { cx: W - pad - r, cy: H - pad - r, r };
   btns.zoomOut = { cx: W - pad - r, cy: H - pad - r - 64, r };
   if (G.side === 'attack') {
     btns.follow = { cx: W - pad - r, cy: H - pad - r - 128, r };
-    btns.launch = { x: 14, y: H - 92, w: 130, h: 60 };
-  } else {
-    if (!G.placement.active) {
-      btns.fire = { x: W - 160, y: H - 92, w: 146, h: 60 };
-    }
+    btns.launch = { x: 14, y: H - 92, w: 150, h: 60 };
+  } else if (!G.placement.active) {
+    btns.fire = { x: W - 170, y: H - 92, w: 156, h: 60 };
   }
-  btns.menu = { x: 14, y: 62, w: 80, h: 34 };
+  btns.menu = { x: 14, y: 62, w: 90, h: 34 };
   return btns;
 }
 
-function handleBattleTap(clientX, clientY) {
-  const btns = getBattleUI();
-  // Кнопки
-  if (Math.hypot(clientX - btns.zoomIn.cx, clientY - btns.zoomIn.cy) < btns.zoomIn.r) {
-    zoomAt(W/2, H/2, cam.zoom * 1.35); return;
-  }
-  if (Math.hypot(clientX - btns.zoomOut.cx, clientY - btns.zoomOut.cy) < btns.zoomOut.r) {
-    zoomAt(W/2, H/2, cam.zoom / 1.35); return;
-  }
-  if (btns.follow && Math.hypot(clientX - btns.follow.cx, clientY - btns.follow.cy) < btns.follow.r) {
-    cam.follow = !cam.follow; sfxClick(); return;
-  }
-  if (btns.launch && hitRect(clientX, clientY, btns.launch)) {
+function handleBattleTap(x, y) {
+  const b = getBattleUI();
+  if (Math.hypot(x - b.zoomIn.cx, y - b.zoomIn.cy) < b.zoomIn.r) { zoomAt(W / 2, H / 2, cam.zoom * 1.35); return; }
+  if (Math.hypot(x - b.zoomOut.cx, y - b.zoomOut.cy) < b.zoomOut.r) { zoomAt(W / 2, H / 2, cam.zoom / 1.35); return; }
+  if (b.follow && Math.hypot(x - b.follow.cx, y - b.follow.cy) < b.follow.r) { cam.follow = !cam.follow; sfxClick(); return; }
+  if (b.launch && hitRect(x, y, b.launch)) {
     setAttackWaypoint(cam.x, cam.y - 300);
     tryLaunchDrone(cam.x, cam.y - 300);
     return;
   }
-  if (btns.fire && hitRect(clientX, clientY, btns.fire)) {
-    fireAllTurrets(); return;
-  }
-  if (hitRect(clientX, clientY, btns.menu)) {
-    G.screen = 'menu'; sfxClick(); return;
-  }
-
-  // Основной тап по миру
-  const wp = screenToWorld(clientX, clientY);
+  if (b.fire && hitRect(x, y, b.fire)) { fireAllTurrets(); return; }
+  if (hitRect(x, y, b.menu)) { G.screen = 'menu'; sfxClick(); return; }
+  const wp = screenToWorld(x, y);
   if (G.side === 'attack') {
     if (G.deployed < G.selectedUnits.length) tryLaunchDrone(wp.x, wp.y);
     else setAttackWaypoint(wp.x, wp.y);
-  } else {
-    if (G.placement.active) tryPlaceTurret(wp.x, wp.y);
-    else { setAttackWaypoint; /* noop */ }
-  }
+  } else if (G.placement.active) tryPlaceTurret(wp.x, wp.y);
 }
 
 /* ============================================================
-   ВВОД
+   18. ВВОД (универсальный)
    ============================================================ */
 const pointers = new Map();
 let pinchState = null;
+
 function onDown(e) {
   e.preventDefault();
-  try { cvs.setPointerCapture(e.pointerId); } catch(_) {}
+  try { cvs.setPointerCapture(e.pointerId); } catch (_) {}
   pointers.set(e.pointerId, {
     id: e.pointerId, startX: e.clientX, startY: e.clientY,
     x: e.clientX, y: e.clientY, startTime: now(),
@@ -903,10 +1445,10 @@ function onDown(e) {
       zoom0: cam.zoom,
       cx: (pts[0].x + pts[1].x) / 2, cy: (pts[0].y + pts[1].y) / 2,
     };
-  } else if (pointers.size === 1) {
-    if (G.screen === 'battle' && G.side === 'defense' && !G.placement.active) {
+  } else if (pointers.size === 1 && G.screen === 'battle' && !op.active) {
+    if (G.side === 'defense' && !G.placement.active) {
       const w = screenToWorld(e.clientX, e.clientY);
-      const grabR = 50 / cam.zoom;
+      const grabR = 60 / cam.zoom;
       for (const t of G.turrets) {
         if (Math.hypot(t.x - w.x, t.y - w.y) < grabR) {
           G.draggingTurret = t;
@@ -917,20 +1459,30 @@ function onDown(e) {
     }
   }
 }
+
 function onMove(e) {
   const p = pointers.get(e.pointerId);
   if (!p) return;
   e.preventDefault();
   const dx = e.clientX - p.x, dy = e.clientY - p.y;
   p.x = e.clientX; p.y = e.clientY;
-  if (Math.hypot(e.clientX - p.startX, e.clientY - p.startY) > 12) p.moved = true;
+  if (Math.hypot(e.clientX - p.startX, e.clientY - p.startY) > 10) p.moved = true;
+
+  // ОПЕРАТОР: свайп = поворот турели
+  if (op.active) {
+    if (pointers.size === 1) {
+      op.yaw += dx * 0.005;
+      op.pitch = clamp(op.pitch + dy * -0.003, -0.15, 0.55);
+      // Удержание = огонь
+      if (op.fireCD <= 0) opFire();
+    }
+    return;
+  }
 
   if (pointers.size >= 2 && pinchState) {
     const pts = Array.from(pointers.values());
     const dist = Math.hypot(pts[1].x - pts[0].x, pts[1].y - pts[0].y);
-    if (pinchState.dist0 > 5) {
-      zoomAt(pinchState.cx, pinchState.cy, pinchState.zoom0 * (dist / pinchState.dist0));
-    }
+    if (pinchState.dist0 > 5) zoomAt(pinchState.cx, pinchState.cy, pinchState.zoom0 * (dist / pinchState.dist0));
     return;
   }
   if (G.draggingTurret) {
@@ -945,18 +1497,17 @@ function onMove(e) {
     p.wasPan = true;
   }
 }
+
 function onUp(e) {
   const p = pointers.get(e.pointerId);
   if (!p) return;
   pointers.delete(e.pointerId);
-  const wasDragging = !!G.draggingTurret;
-  if (wasDragging) G.draggingTurret = null;
+  const wasDrag = !!G.draggingTurret;
+  if (wasDrag) G.draggingTurret = null;
   if (pointers.size >= 2) return;
   pinchState = null;
   if (pointers.size === 0) {
-    if (!p.moved && !p.wasPan && !wasDragging && now() - p.startTime < 500) {
-      onTap(e.clientX, e.clientY);
-    }
+    if (!p.moved && !p.wasPan && !wasDrag && now() - p.startTime < 500) onTap(e.clientX, e.clientY);
   } else {
     const rem = Array.from(pointers.values())[0];
     rem.suppressTap = true;
@@ -964,92 +1515,105 @@ function onUp(e) {
 }
 
 /* ============================================================
-   ДИСПЕТЧЕР ТАПОВ
+   19. ДИСПЕТЧЕР ТАПОВ
    ============================================================ */
 function onTap(x, y) {
-  audioCtx(); // разблокировка звука по первому жесту
-  if (G.screen === 'menu')    return tapMenu(x, y);
-  if (G.screen === 'campaign')return tapCampaign(x, y);
-  if (G.screen === 'briefing')return tapBriefing(x, y);
-  if (G.screen === 'upgrades')return tapUpgrades(x, y);
-  if (G.screen === 'battle')  return handleBattleTap(x, y);
-  if (G.screen === 'victory') return tapVictory(x, y);
+  audioCtx();
+  if (op.active) {
+    // Кнопка огня
+    if (G._opFireBtn && Math.hypot(x - G._opFireBtn.x, y - G._opFireBtn.y) < G._opFireBtn.r) {
+      opFire(); return;
+    }
+    // Кнопка выхода
+    if (G._opMenuBtn && hitRect(x, y, G._opMenuBtn)) {
+      op.active = false;
+      if (op.score > (Save.opBest || 0)) { Save.opBest = op.score; commitSave(); }
+      G.screen = 'menu'; sfxClick(); return;
+    }
+    // Тап по экрану — тоже выстрел
+    opFire();
+    return;
+  }
+  if (G.screen === 'menu')     return tapMenu(x, y);
+  if (G.screen === 'campaign') return tapCampaign(x, y);
+  if (G.screen === 'briefing') return tapBriefing(x, y);
+  if (G.screen === 'upgrades') return tapUpgrades(x, y);
+  if (G.screen === 'battle')   return handleBattleTap(x, y);
+  if (G.screen === 'victory')  return tapVictory(x, y);
+  if (G.screen === 'opEnd')    return tapOpEnd(x, y);
 }
 
 /* ============================================================
-   ЭКРАН: МЕНЮ
+   20. ЭКРАНЫ
    ============================================================ */
 function drawMenu() {
   ctx.fillStyle = '#0a0e14'; ctx.fillRect(0, 0, W, H);
-
-  // Декоративные БПЛА на фоне
   const t = now() / 1000;
   ctx.save(); ctx.globalAlpha = 0.12;
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 7; i++) {
     const x = ((i * 0.17 + t * 0.04) % 1.3 - 0.15) * W;
-    const y = H * 0.10 + i * 45 + Math.sin(t + i) * 14;
+    const y = H * 0.09 + i * 42 + Math.sin(t + i) * 14;
     ctx.save(); ctx.translate(x, y); ctx.rotate(-0.05);
     ctx.fillStyle = '#5ac8ff';
     ctx.beginPath();
     ctx.moveTo(18, 0); ctx.lineTo(-8, -11); ctx.lineTo(-3, 0); ctx.lineTo(-8, 11);
-    ctx.closePath(); ctx.fill();
-    ctx.restore();
+    ctx.closePath(); ctx.fill(); ctx.restore();
   }
   ctx.restore();
 
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = '#5ac8ff';
-  ctx.font = `bold ${Math.min(44, W / 8)}px -apple-system,sans-serif`;
-  ctx.fillText('ТИХИЙ УДАР', W / 2, H * 0.18);
+  ctx.font = `bold ${Math.min(42, W / 8)}px -apple-system,sans-serif`;
+  ctx.fillText('ТИХИЙ УДАР', W / 2, H * 0.16);
   ctx.fillStyle = '#ff8844';
-  ctx.font = `bold 18px -apple-system,sans-serif`;
-  ctx.fillText('— версия 3.0 —', W / 2, H * 0.18 + 40);
-
-  // Кредиты
+  ctx.font = 'bold 16px -apple-system,sans-serif';
+  ctx.fillText('— версия 4.0 —', W / 2, H * 0.16 + 36);
   ctx.fillStyle = '#ffcc33';
   ctx.font = 'bold 18px -apple-system,sans-serif';
-  ctx.fillText('₽ ' + (Save.credits || 0), W / 2, H * 0.18 + 76);
+  ctx.fillText('₽ ' + (Save.credits || 0), W / 2, H * 0.16 + 68);
 
-  const bw = Math.min(340, W * 0.84), bh = 60;
+  const bw = Math.min(340, W * 0.84), bh = 58;
   const bx = (W - bw) / 2;
   const items = [
-    { label: 'КАМПАНИЯ',     key: 'campaign', color: '#1d4d7e' },
-    { label: 'ПОЛИГОН',      key: 'endless',  color: '#4a3a7e' },
-    { label: 'АНГАР',        key: 'upgrades', color: '#2a5a3a' },
-    { label: 'НАСТРОЙКИ',    key: 'settings', color: '#3a3a3a' },
+    { label: 'КАМПАНИЯ',      color: '#1d4d7e' },
+    { label: 'ОПЕРАТОР (МОГ)', color: '#7a3a16' },
+    { label: 'ПОЛИГОН',       color: '#4a3a7e' },
+    { label: 'АНГАР',         color: '#2a5a3a' },
+    { label: 'НАСТРОЙКИ',     color: '#3a3a3a' },
   ];
-  let y = H * 0.34;
+  let y = H * 0.30;
   for (const it of items) {
     ctx.fillStyle = it.color;
     roundRect(ctx, bx, y, bw, bh, 12); ctx.fill();
     ctx.strokeStyle = 'rgba(150,180,210,0.5)'; ctx.lineWidth = 2;
     roundRect(ctx, bx, y, bw, bh, 12); ctx.stroke();
     ctx.fillStyle = '#e8f4ff';
-    ctx.font = 'bold 20px -apple-system,sans-serif';
+    ctx.font = 'bold 19px -apple-system,sans-serif';
     ctx.fillText(it.label, W / 2, y + bh / 2);
-    y += bh + 14;
+    y += bh + 12;
   }
+  G._menuRects = items.map((_, i) => ({
+    x: bx, y: H * 0.30 + i * (bh + 12), w: bw, h: bh,
+  }));
 
   ctx.fillStyle = '#4a5560';
   ctx.font = '12px -apple-system,sans-serif';
-  ctx.fillText('Сделано для мобильных · без рекламы', W / 2, H - 24);
+  ctx.fillText('Рекорд оператора: ' + (Save.opBest || 0), W / 2, H - 24);
 }
 function tapMenu(x, y) {
-  const bw = Math.min(340, W * 0.84), bh = 60;
-  const bx = (W - bw) / 2;
-  let yy = H * 0.34;
-  const keys = ['campaign', 'endless', 'upgrades', 'settings'];
-  for (let i = 0; i < keys.length; i++) {
-    if (x >= bx && x <= bx + bw && y >= yy && y <= yy + bh) {
+  if (!G._menuRects) return;
+  const keys = ['campaign', 'operator', 'endless', 'upgrades', 'settings'];
+  for (let i = 0; i < G._menuRects.length; i++) {
+    if (hitRect(x, y, G._menuRects[i])) {
       sfxClick();
       const k = keys[i];
       if (k === 'campaign') G.screen = 'campaign';
-      if (k === 'endless')  startEndless();
-      if (k === 'upgrades') G.screen = 'upgrades';
-      if (k === 'settings') toggleSettings();
+      else if (k === 'operator') { opStart(); }
+      else if (k === 'endless') startEndless();
+      else if (k === 'upgrades') G.screen = 'upgrades';
+      else if (k === 'settings') toggleSettings();
       return;
     }
-    yy += bh + 14;
   }
 }
 function toggleSettings() {
@@ -1057,34 +1621,26 @@ function toggleSettings() {
   Save.settings.vibrate = !Save.settings.vibrate;
   setMessage('Звук: ' + (Save.settings.sound ? 'вкл' : 'выкл') +
              ' · Вибро: ' + (Save.settings.vibrate ? 'вкл' : 'выкл'), 1.5);
-  commitSave();
-  sfxClick();
+  commitSave(); sfxClick();
 }
 
-/* ============================================================
-   ЭКРАН: КАМПАНИЯ
-   ============================================================ */
 function drawCampaign() {
   ctx.fillStyle = '#0a0e14'; ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = '#5ac8ff';
-  ctx.font = 'bold 26px -apple-system,sans-serif';
-  ctx.fillText('Глава 1 · Первые вылеты', W / 2, 60);
+  ctx.font = 'bold 22px -apple-system,sans-serif';
+  ctx.fillText('Глава 1', W / 2, 60);
 
-  // Сетка 2×3
-  const cols = 2, rows = Math.ceil(MISSIONS.length / cols);
-  const pad = 20;
+  const cols = 2, pad = 16;
   const cw = (W - pad * (cols + 1)) / cols;
   const ch = 110;
-  const startY = 110;
-
+  const startY = 100;
   for (let i = 0; i < MISSIONS.length; i++) {
     const m = MISSIONS[i];
     const col = i % cols, row = Math.floor(i / cols);
     const bx = pad + col * (cw + pad);
     const by = startY + row * (ch + pad);
     const stars = Save.stars[m.id] || 0;
-
     ctx.fillStyle = '#1b2530';
     roundRect(ctx, bx, by, cw, ch, 12); ctx.fill();
     ctx.strokeStyle = stars > 0 ? '#5ac8ff' : 'rgba(120,140,160,0.4)';
@@ -1092,40 +1648,34 @@ function drawCampaign() {
     roundRect(ctx, bx, by, cw, ch, 12); ctx.stroke();
 
     ctx.fillStyle = '#e8f4ff';
-    ctx.font = 'bold 15px -apple-system,sans-serif';
+    ctx.font = 'bold 14px -apple-system,sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText((i + 1) + '. ' + m.name, bx + 12, by + 24);
+    ctx.fillText((i + 1) + '. ' + m.name, bx + 10, by + 22);
 
     ctx.fillStyle = '#8aa0b0';
-    ctx.font = '12px -apple-system,sans-serif';
-    const lines = wrapText(m.brief, cw - 24, ctx);
+    ctx.font = '11px -apple-system,sans-serif';
+    const lines = wrapText(m.brief, cw - 20, ctx);
     for (let li = 0; li < Math.min(2, lines.length); li++)
-      ctx.fillText(lines[li], bx + 12, by + 46 + li * 15);
+      ctx.fillText(lines[li], bx + 10, by + 42 + li * 14);
 
-    // Звёзды
-    ctx.font = 'bold 22px -apple-system,sans-serif';
+    ctx.font = 'bold 20px -apple-system,sans-serif';
     ctx.fillStyle = stars > 0 ? '#ffcc33' : 'rgba(120,140,160,0.35)';
-    ctx.textAlign = 'left';
-    for (let s = 0; s < 3; s++) {
-      ctx.fillText('★', bx + 12 + s * 24, by + ch - 18);
-    }
-    // Кнопка "Играть"
+    for (let s = 0; s < 3; s++) ctx.fillText('★', bx + 10 + s * 22, by + ch - 18);
+
     ctx.fillStyle = '#1d4d7e';
-    roundRect(ctx, bx + cw - 92, by + ch - 38, 80, 28, 8); ctx.fill();
+    roundRect(ctx, bx + cw - 88, by + ch - 38, 78, 28, 8); ctx.fill();
     ctx.fillStyle = '#e8f4ff';
-    ctx.font = 'bold 13px -apple-system,sans-serif';
+    ctx.font = 'bold 12px -apple-system,sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText('ИГРАТЬ', bx + cw - 52, by + ch - 24);
+    ctx.fillText('ИГРАТЬ', bx + cw - 49, by + ch - 24);
 
-    // Сохраняем для тапа
-    m._rect = { x: bx, y: by, w: cw, h: ch, btn: { x: bx + cw - 92, y: by + ch - 38, w: 80, h: 28 } };
+    m._rect = { x: bx, y: by, w: cw, h: ch,
+      btn: { x: bx + cw - 88, y: by + ch - 38, w: 78, h: 28 } };
   }
-
   drawBackButton();
 }
 function wrapText(text, maxW, c) {
-  const words = text.split(' ');
-  const lines = []; let cur = '';
+  const words = text.split(' '); const lines = []; let cur = '';
   for (const w of words) {
     const test = cur ? cur + ' ' + w : w;
     if (c.measureText(test).width > maxW) { lines.push(cur); cur = w; }
@@ -1137,107 +1687,93 @@ function wrapText(text, maxW, c) {
 function tapCampaign(x, y) {
   if (tapBack(x, y)) return;
   for (const m of MISSIONS) {
-    if (m._rect && x >= m._rect.btn.x && x <= m._rect.btn.x + m._rect.btn.w &&
-        y >= m._rect.btn.y && y <= m._rect.btn.y + m._rect.btn.h) {
+    if (m._rect && hitRect(x, y, m._rect.btn)) {
       G.pendingMission = m; G.screen = 'briefing'; sfxClick(); return;
     }
   }
 }
 
-/* ============================================================
-   ЭКРАН: БРИФИНГ
-   ============================================================ */
 function drawBriefing() {
   ctx.fillStyle = '#0a0e14'; ctx.fillRect(0, 0, W, H);
   const m = G.pendingMission; if (!m) return;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = '#5ac8ff';
-  ctx.font = 'bold 24px -apple-system,sans-serif';
-  ctx.fillText(m.name, W / 2, 100);
+  ctx.font = 'bold 22px -apple-system,sans-serif';
+  ctx.fillText(m.name, W / 2, 90);
 
   ctx.fillStyle = '#aab';
-  ctx.font = '15px -apple-system,sans-serif';
+  ctx.font = '14px -apple-system,sans-serif';
   const lines = wrapText(m.brief, W - 80, ctx);
-  for (let i = 0; i < lines.length; i++)
-    ctx.fillText(lines[i], W / 2, 150 + i * 22);
+  for (let i = 0; i < lines.length; i++) ctx.fillText(lines[i], W / 2, 140 + i * 22);
 
-  // Список юнитов
   ctx.textAlign = 'left';
   ctx.fillStyle = '#e8f4ff';
-  ctx.font = 'bold 15px -apple-system,sans-serif';
-  ctx.fillText('Ваши силы:', 40, 260);
-  ctx.font = '14px -apple-system,sans-serif';
-  let yy = 290;
+  ctx.font = 'bold 14px -apple-system,sans-serif';
+  ctx.fillText('Ваши силы:', 40, 230);
+  ctx.font = '13px -apple-system,sans-serif';
+  let yy = 258;
   const isAtk = m.side === 'attack';
   const units = isAtk ? m.playerUnits : (m.enemies || []);
   for (const u of units) {
-    const tk = u.type; const cnt = u.count;
-    const name = isAtk ? ATTACK_UNITS[tk].name : DEFENSE_UNITS[tk].name;
-    ctx.fillText('• ' + name + (cnt ? ' × ' + cnt : ''), 55, yy);
-    yy += 22;
+    const tk = u.type, cnt = u.count;
+    const nm = isAtk ? ATTACK_UNITS[tk].name : DEFENSE_UNITS[tk].name;
+    ctx.fillText('• ' + nm + (cnt ? ' × ' + cnt : ''), 55, yy);
+    yy += 20;
+  }
+  if (m.mogCount) {
+    ctx.fillText('• МОГ на дорогах × ' + m.mogCount, 55, yy);
   }
 
-  // Кнопки
-  const bw = Math.min(320, W * 0.7), bh = 58;
+  const bw = Math.min(320, W * 0.7), bh = 56;
   const bx = (W - bw) / 2;
   ctx.fillStyle = '#1d4d7e';
-  roundRect(ctx, bx, H - 160, bw, bh, 12); ctx.fill();
+  roundRect(ctx, bx, H - 140, bw, bh, 12); ctx.fill();
   ctx.strokeStyle = '#5ac8ff'; ctx.lineWidth = 2;
-  roundRect(ctx, bx, H - 160, bw, bh, 12); ctx.stroke();
+  roundRect(ctx, bx, H - 140, bw, bh, 12); ctx.stroke();
   ctx.fillStyle = '#e8f4ff';
   ctx.font = 'bold 20px -apple-system,sans-serif';
   ctx.textAlign = 'center';
-  ctx.fillText('В БОЙ', W / 2, H - 160 + bh / 2);
-
+  ctx.fillText('В БОЙ', W / 2, H - 140 + bh / 2);
+  G._briefGoBtn = { x: bx, y: H - 140, w: bw, h: bh };
   drawBackButton();
 }
 function tapBriefing(x, y) {
   if (tapBack(x, y)) return;
-  const bw = Math.min(320, W * 0.7), bh = 58;
-  const bx = (W - bw) / 2;
-  if (x >= bx && x <= bx + bw && y >= H - 160 && y <= H - 160 + bh) {
-    sfxClick();
-    startMission(G.pendingMission);
+  if (G._briefGoBtn && hitRect(x, y, G._briefGoBtn)) {
+    sfxClick(); startMission(G.pendingMission);
   }
 }
 
-/* ============================================================
-   ЭКРАН: АНГАР (АПГРЕЙДЫ)
-   ============================================================ */
 function drawUpgrades() {
   ctx.fillStyle = '#0a0e14'; ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.fillStyle = '#5ac8ff';
   ctx.font = 'bold 22px -apple-system,sans-serif';
   ctx.fillText('АНГАР', W / 2, 50);
-
   ctx.fillStyle = '#ffcc33';
   ctx.font = 'bold 16px -apple-system,sans-serif';
   ctx.fillText('₽ ' + (Save.credits || 0), W / 2, 78);
 
-  // Атака
   ctx.textAlign = 'left';
   ctx.fillStyle = '#5ac8ff';
-  ctx.font = 'bold 15px -apple-system,sans-serif';
-  ctx.fillText('АТАКА', 20, 112);
-  let y = 134;
-  for (const key of Object.keys(ATTACK_UNITS)) {
+  ctx.font = 'bold 14px -apple-system,sans-serif';
+  ctx.fillText('АТАКА', 20, 108);
+  let y = 130;
+  for (const key of Object.keys(ATTACK_UNITS))
     y = drawUpgradeRow(key, ATTACK_UNITS[key], y, Save.unlocked.attack[key]);
-  }
-  y += 20;
+  y += 14;
   ctx.fillStyle = '#ff8844';
-  ctx.font = 'bold 15px -apple-system,sans-serif';
+  ctx.font = 'bold 14px -apple-system,sans-serif';
   ctx.fillText('ОБОРОНА', 20, y);
   y += 22;
-  for (const key of Object.keys(DEFENSE_UNITS)) {
+  for (const key of Object.keys(DEFENSE_UNITS))
     y = drawUpgradeRow(key, DEFENSE_UNITS[key], y, Save.unlocked.defense[key]);
-  }
   drawBackButton();
 }
 function drawUpgradeRow(key, base, y, unlocked) {
   const lvl = Save.upgrades[key] || 1;
   const max = 5;
-  const rowH = 66;
+  const rowH = 64;
   ctx.fillStyle = unlocked ? '#1b2530' : '#171a1f';
   roundRect(ctx, 14, y, W - 28, rowH, 10); ctx.fill();
   ctx.strokeStyle = unlocked ? 'rgba(90,200,255,0.35)' : 'rgba(120,140,160,0.2)';
@@ -1245,27 +1781,23 @@ function drawUpgradeRow(key, base, y, unlocked) {
   roundRect(ctx, 14, y, W - 28, rowH, 10); ctx.stroke();
 
   ctx.fillStyle = unlocked ? '#e8f4ff' : '#5a6068';
-  ctx.font = 'bold 15px -apple-system,sans-serif';
+  ctx.font = 'bold 14px -apple-system,sans-serif';
   ctx.textAlign = 'left';
   ctx.fillText(base.name + (unlocked ? '' : ' 🔒'), 26, y + 20);
-  ctx.font = '12px -apple-system,sans-serif';
+  ctx.font = '11px -apple-system,sans-serif';
   ctx.fillStyle = unlocked ? '#8aa0b0' : '#5a6068';
   ctx.fillText('HP ' + base.hp + (base.damage ? ' · Урон ' + base.damage : '') +
-               (base.range ? ' · Дальн. ' + base.range : ''), 26, y + 40);
-
-  // Уровень
+               (base.range ? ' · Дальн. ' + base.range : ''), 26, y + 38);
   ctx.fillStyle = '#ffcc33';
-  ctx.font = 'bold 14px -apple-system,sans-serif';
-  ctx.fillText('Ур. ' + lvl + '/' + max, 26, y + 58);
+  ctx.font = 'bold 13px -apple-system,sans-serif';
+  ctx.fillText('Ур. ' + lvl + '/' + max, 26, y + 55);
 
-  // Кнопка +
   const cost = (lvl + 1) * 100;
   const canUp = unlocked && lvl < max && (Save.credits || 0) >= cost;
-  const btn = { x: W - 96, y: y + 18, w: 82, h: 32 };
+  const btn = { x: W - 96, y: y + 16, w: 82, h: 32 };
   ctx.fillStyle = canUp ? '#2a5a3a' : '#2a2f36';
   roundRect(ctx, btn.x, btn.y, btn.w, btn.h, 8); ctx.fill();
-  ctx.strokeStyle = canUp ? '#66cc88' : 'rgba(120,140,160,0.35)';
-  ctx.stroke();
+  ctx.strokeStyle = canUp ? '#66cc88' : 'rgba(120,140,160,0.35)'; ctx.stroke();
   ctx.fillStyle = canUp ? '#e8ffe8' : '#6a7078';
   ctx.font = 'bold 12px -apple-system,sans-serif';
   ctx.textAlign = 'center';
@@ -1283,56 +1815,47 @@ function tapUpgrades(x, y) {
       if (b.canUp) {
         Save.credits -= b.cost;
         Save.upgrades[b.key] = b.lvl + 1;
-        commitSave();
-        sfxWin();
+        commitSave(); sfxWin();
       } else sfxClick();
       return;
     }
   }
 }
 
-/* ============================================================
-   ЭКРАН: ПОБЕДА / ПОРАЖЕНИЕ
-   ============================================================ */
 function drawVictory() {
   ctx.fillStyle = 'rgba(0,0,0,0.85)'; ctx.fillRect(0, 0, W, H);
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   const win = G.result === 'win';
   ctx.fillStyle = win ? '#44dd66' : '#ff4444';
-  ctx.shadowColor = win ? '#44dd66' : '#ff4444';
-  ctx.shadowBlur = 22;
+  ctx.shadowColor = win ? '#44dd66' : '#ff4444'; ctx.shadowBlur = 22;
   ctx.font = `bold ${Math.min(52, W / 7)}px -apple-system,sans-serif`;
-  ctx.fillText(win ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ', W / 2, H * 0.28);
+  ctx.fillText(win ? 'ПОБЕДА' : 'ПОРАЖЕНИЕ', W / 2, H * 0.26);
   ctx.shadowBlur = 0;
 
   if (G.mission && G.mission.id === 'endless') {
     ctx.fillStyle = '#aab';
-    ctx.font = '18px -apple-system,sans-serif';
-    ctx.fillText('Волн пройдено: ' + G.endlessWave, W / 2, H * 0.28 + 60);
-    ctx.fillStyle = '#ffcc33';
-    ctx.fillText('Рекорд: ' + (Save.endlessBest || 0), W / 2, H * 0.28 + 90);
+    ctx.font = '16px -apple-system,sans-serif';
+    ctx.fillText('Продержались: ' + Math.floor(G.time) + ' сек', W / 2, H * 0.26 + 60);
   } else if (win && G.lastReward) {
-    // Звёзды
-    ctx.font = 'bold 40px -apple-system,sans-serif';
+    ctx.font = 'bold 38px -apple-system,sans-serif';
     for (let i = 0; i < 3; i++) {
       ctx.fillStyle = i < G.lastReward.stars ? '#ffcc33' : 'rgba(120,140,160,0.35)';
-      ctx.fillText('★', W / 2 - 60 + i * 60, H * 0.28 + 60);
+      ctx.fillText('★', W / 2 - 60 + i * 60, H * 0.26 + 60);
     }
     ctx.fillStyle = '#ffcc33';
     ctx.font = 'bold 20px -apple-system,sans-serif';
-    ctx.fillText('+ ₽ ' + G.lastReward.credits, W / 2, H * 0.28 + 120);
+    ctx.fillText('+ ₽ ' + G.lastReward.credits, W / 2, H * 0.26 + 118);
   }
 
-  // Кнопки: ещё раз / в кампанию / в меню
-  const bw = Math.min(320, W * 0.72), bh = 58;
+  const bw = Math.min(320, W * 0.72), bh = 56;
   const bx = (W - bw) / 2;
-  const by1 = H * 0.58, by2 = by1 + bh + 14, by3 = by2 + bh + 14;
+  const by1 = H * 0.55, by2 = by1 + bh + 12, by3 = by2 + bh + 12;
   drawBtn(bx, by1, bw, bh, 'ПОВТОРИТЬ', '#1d4d7e');
-  drawBtn(bx, by2, bw, bh, 'К КАРТЕ',   '#2a5a3a');
-  drawBtn(bx, by3, bw, bh, 'В МЕНЮ',    '#3a3a3a');
+  drawBtn(bx, by2, bw, bh, 'К КАРТЕ', '#2a5a3a');
+  drawBtn(bx, by3, bw, bh, 'В МЕНЮ', '#3a3a3a');
   G._btnRepeat = { x: bx, y: by1, w: bw, h: bh };
-  G._btnMap    = { x: bx, y: by2, w: bw, h: bh };
-  G._btnMenu   = { x: bx, y: by3, w: bw, h: bh };
+  G._btnMap = { x: bx, y: by2, w: bw, h: bh };
+  G._btnMenu = { x: bx, y: by3, w: bw, h: bh };
 }
 function drawBtn(x, y, w, h, label, color) {
   ctx.fillStyle = color;
@@ -1342,7 +1865,7 @@ function drawBtn(x, y, w, h, label, color) {
   ctx.fillStyle = '#e8f4ff';
   ctx.font = 'bold 18px -apple-system,sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText(label, x + w/2, y + h/2);
+  ctx.fillText(label, x + w / 2, y + h / 2);
 }
 function tapVictory(x, y) {
   if (hitRect(x, y, G._btnRepeat)) {
@@ -1351,27 +1874,49 @@ function tapVictory(x, y) {
     else startMission(G.mission);
     return;
   }
-  if (hitRect(x, y, G._btnMap)) {
-    sfxClick(); G.screen = 'campaign'; return;
-  }
-  if (hitRect(x, y, G._btnMenu)) {
-    sfxClick(); G.screen = 'menu'; return;
-  }
+  if (hitRect(x, y, G._btnMap)) { sfxClick(); G.screen = 'campaign'; return; }
+  if (hitRect(x, y, G._btnMenu)) { sfxClick(); G.screen = 'menu'; return; }
 }
 
-/* ============================================================
-   НАВИГАЦИОННАЯ КНОПКА "НАЗАД"
-   ============================================================ */
+function drawOpEnd() {
+  ctx.fillStyle = 'rgba(0,0,0,0.88)'; ctx.fillRect(0, 0, W, H);
+  ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+  ctx.fillStyle = '#ff4444';
+  ctx.shadowColor = '#ff4444'; ctx.shadowBlur = 22;
+  ctx.font = `bold ${Math.min(48, W / 7)}px -apple-system,sans-serif`;
+  ctx.fillText('МОГ УНИЧТОЖЕН', W / 2, H * 0.30);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#ffcc33';
+  ctx.font = 'bold 26px -apple-system,sans-serif';
+  ctx.fillText('Очки: ' + op.score, W / 2, H * 0.30 + 70);
+  ctx.fillStyle = '#aab';
+  ctx.font = '16px -apple-system,sans-serif';
+  ctx.fillText('Волна: ' + op.wave, W / 2, H * 0.30 + 108);
+  ctx.fillText('Рекорд: ' + (Save.opBest || 0), W / 2, H * 0.30 + 138);
+
+  const bw = Math.min(320, W * 0.72), bh = 58;
+  const bx = (W - bw) / 2;
+  drawBtn(bx, H * 0.58, bw, bh, 'ЕЩЁ РАЗ', '#7a3a16');
+  drawBtn(bx, H * 0.58 + bh + 12, bw, bh, 'В МЕНЮ', '#3a3a3a');
+  G._opEndRepeat = { x: bx, y: H * 0.58, w: bw, h: bh };
+  G._opEndMenu = { x: bx, y: H * 0.58 + bh + 12, w: bw, h: bh };
+}
+function tapOpEnd(x, y) {
+  if (hitRect(x, y, G._opEndRepeat)) { sfxClick(); opStart(); return; }
+  if (hitRect(x, y, G._opEndMenu)) { sfxClick(); G.screen = 'menu'; return; }
+}
+
 function drawBackButton() {
-  const r = { x: 14, y: 14, w: 76, h: 34 };
+  const r = { x: 14, y: 14, w: 76, h: 32 };
   ctx.fillStyle = 'rgba(20,30,45,0.85)';
   roundRect(ctx, r.x, r.y, r.w, r.h, 8); ctx.fill();
   ctx.strokeStyle = 'rgba(150,180,210,0.5)'; ctx.lineWidth = 1.5;
   roundRect(ctx, r.x, r.y, r.w, r.h, 8); ctx.stroke();
   ctx.fillStyle = '#e8f4ff';
-  ctx.font = 'bold 14px -apple-system,sans-serif';
+  ctx.font = 'bold 13px -apple-system,sans-serif';
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-  ctx.fillText('‹ НАЗАД', r.x + r.w/2, r.y + r.h/2);
+  ctx.fillText('‹ НАЗАД', r.x + r.w / 2, r.y + r.h / 2);
   G._backBtn = r;
 }
 function tapBack(x, y) {
@@ -1386,137 +1931,41 @@ function tapBack(x, y) {
 }
 
 /* ============================================================
-   ОТРИСОВКА БОЯ
+   21. ОТРИСОВКА БОЯ (вид сверху)
    ============================================================ */
-function drawTerrain() {
-  const b = visibleBounds();
-  ctx.fillStyle = '#28361b';
-  ctx.fillRect(b.x1, b.y1, b.x2 - b.x1, b.y2 - b.y1);
-
-  for (const f of terrain.fields) {
-    if (f.x + f.w < b.x1 || f.x > b.x2 || f.y + f.h < b.y1 || f.y > b.y2) continue;
-    ctx.fillStyle = f.color; ctx.fillRect(f.x, f.y, f.w, f.h);
-  }
-  for (const p of terrain.parks) {
-    if (p.x + p.w < b.x1 || p.x > b.x2 || p.y + p.h < b.y1 || p.y > b.y2) continue;
-    ctx.fillStyle = '#294519'; ctx.fillRect(p.x, p.y, p.w, p.h);
-    ctx.strokeStyle = 'rgba(120,180,90,0.3)'; ctx.lineWidth = 2;
-    ctx.strokeRect(p.x, p.y, p.w, p.h);
-  }
-  ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+function drawTarget() {
+  const t = G.target; if (!t) return;
+  const g = ctx.createRadialGradient(t.x, t.y, 0, t.x, t.y, t.radius * 1.7);
+  g.addColorStop(0, 'rgba(255,70,70,0.20)');
+  g.addColorStop(1, 'rgba(255,70,70,0)');
+  ctx.fillStyle = g;
+  ctx.beginPath(); ctx.arc(t.x, t.y, t.radius * 1.7, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = '#26161a'; ctx.strokeStyle = '#c04040';
+  ctx.lineWidth = Math.max(2, 3 / cam.zoom);
+  ctx.beginPath(); ctx.arc(t.x, t.y, t.radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.arc(t.x, t.y, t.radius * 0.55, 0, Math.PI * 2); ctx.stroke();
+  ctx.strokeStyle = 'rgba(255,80,80,0.85)';
+  const k = t.radius * 0.85;
   ctx.beginPath();
-  ctx.moveTo(terrain.riverPts[0].x, terrain.riverPts[0].y);
-  for (let i = 1; i < terrain.riverPts.length; i++)
-    ctx.lineTo(terrain.riverPts[i].x, terrain.riverPts[i].y);
-  ctx.strokeStyle = '#1f3a55'; ctx.lineWidth = 90; ctx.stroke();
-  ctx.strokeStyle = '#2f4f70'; ctx.lineWidth = 65; ctx.stroke();
-  ctx.strokeStyle = 'rgba(140,200,240,0.15)'; ctx.lineWidth = 20; ctx.stroke();
-
-  for (const r of terrain.roads) {
-    ctx.strokeStyle = r.major ? '#3a3a3a' : '#323232';
-    ctx.lineWidth = r.w; ctx.lineCap = 'butt';
-    ctx.beginPath(); ctx.moveTo(r.x1, r.y1); ctx.lineTo(r.x2, r.y2); ctx.stroke();
-  }
-  for (const r of terrain.roads) {
-    if (!r.major) continue;
-    ctx.strokeStyle = 'rgba(255,255,255,0.14)'; ctx.lineWidth = 3;
-    ctx.setLineDash([24, 34]);
-    ctx.beginPath(); ctx.moveTo(r.x1, r.y1); ctx.lineTo(r.x2, r.y2); ctx.stroke();
-  }
-  ctx.setLineDash([]);
-
-  for (const bd of terrain.buildings) {
-    if (bd.x + bd.w < b.x1 - 5 || bd.x > b.x2 + 5 ||
-        bd.y + bd.h < b.y1 - 5 || bd.y > b.y2 + 5) continue;
-    ctx.fillStyle = 'rgba(0,0,0,0.35)';
-    ctx.fillRect(bd.x + 5, bd.y + 5, bd.w, bd.h);
-    const s = bd.shade;
-    if (bd.type === 'tall')
-      ctx.fillStyle = `rgb(${(70*s)|0},${(78*s)|0},${(92*s)|0})`;
-    else
-      ctx.fillStyle = `rgb(${(92*s)|0},${(88*s)|0},${(82*s)|0})`;
-    ctx.fillRect(bd.x, bd.y, bd.w, bd.h);
-    ctx.fillStyle = 'rgba(255,255,255,0.09)';
-    ctx.fillRect(bd.x + 7, bd.y + 7, bd.w - 14, bd.h - 14);
-    ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-    ctx.lineWidth = Math.max(0.8, 1.5 / cam.zoom);
-    ctx.strokeRect(bd.x, bd.y, bd.w, bd.h);
-  }
-  for (const t of terrain.trees) {
-    if (t.x + t.r < b.x1 - 5 || t.x - t.r > b.x2 + 5 ||
-        t.y + t.r < b.y1 - 5 || t.y - t.r > b.y2 + 5) continue;
-    ctx.fillStyle = 'rgba(0,0,0,0.28)';
-    ctx.beginPath(); ctx.arc(t.x + 3, t.y + 4, t.r, 0, Math.PI * 2); ctx.fill();
-    const s = t.shade;
-    ctx.fillStyle = `rgb(${(42*s)|0},${(96*s)|0},${(38*s)|0})`;
-    ctx.beginPath(); ctx.arc(t.x, t.y, t.r, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = `rgba(150,210,110,${0.28*s})`;
-    ctx.beginPath(); ctx.arc(t.x - t.r*0.3, t.y - t.r*0.3, t.r*0.6, 0, Math.PI*2); ctx.fill();
-  }
-}
-
-function drawUAV(x, y, angle, size, isPlayer, hitFlash, hpRatio, typeKey) {
-  ctx.save(); ctx.translate(x, y); ctx.rotate(angle);
-  ctx.fillStyle = 'rgba(120,200,255,0.45)';
-  ctx.beginPath(); ctx.ellipse(-size*1.25, 0, size*0.7, size*0.2, 0, 0, Math.PI*2); ctx.fill();
-
-  let base = isPlayer ? '#8aa0b8' : '#b89a8a';
-  if (typeKey === 'heavy') base = isPlayer ? '#7a6a4a' : '#a08a6a';
-  if (typeKey === 'jammer') base = '#6ac8a0';
-  if (typeKey === 'scout') base = '#a0a0b8';
-  const dark = '#2a3a4a';
-  const body = hitFlash > 0 ? '#ffffff' : base;
-
-  ctx.fillStyle = body; ctx.strokeStyle = dark;
-  ctx.lineWidth = Math.max(1, 1.6 / cam.zoom);
-  ctx.beginPath();
-  ctx.moveTo(size*1.15, 0);
-  ctx.lineTo(-size*0.4, -size*1.05);
-  ctx.lineTo(-size*0.85, -size*0.35);
-  ctx.lineTo(-size*0.85, size*0.35);
-  ctx.lineTo(-size*0.4, size*1.05);
-  ctx.closePath(); ctx.fill(); ctx.stroke();
-
-  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
-  ctx.lineWidth = Math.max(1, 1 / cam.zoom);
-  ctx.beginPath(); ctx.moveTo(size*0.9, 0); ctx.lineTo(-size*0.6, 0); ctx.stroke();
-
-  ctx.fillStyle = hitFlash > 0 ? '#ffcc33' : (isPlayer ? '#3a7ec8' : '#c84a3a');
-  ctx.beginPath(); ctx.arc(size*0.85, 0, size*0.2, 0, Math.PI*2); ctx.fill();
-
-  if (typeKey === 'jammer') {
-    ctx.strokeStyle = `rgba(100,255,180,${0.3 + 0.3*Math.sin(now()/120)})`;
-    ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(0, 0, size*1.6, 0, Math.PI*2); ctx.stroke();
-  }
-
-  ctx.strokeStyle = 'rgba(230,230,230,0.75)';
-  ctx.lineWidth = Math.max(1, 1.5 / cam.zoom);
-  const pA = (now()/25) % (Math.PI*2);
-  const pLen = Math.abs(Math.cos(pA)) * size * 0.55;
-  ctx.beginPath(); ctx.moveTo(-size*1.05, -pLen); ctx.lineTo(-size*1.05, pLen); ctx.stroke();
-  ctx.restore();
-
-  if (hpRatio < 1) {
-    const bw = 34;
-    const bh = 4;
-    const y0 = y - 30;
-    ctx.fillStyle = 'rgba(0,0,0,0.55)';
-    ctx.fillRect(x - bw/2, y0, bw, bh);
-    ctx.fillStyle = hpRatio > 0.5 ? '#44dd66' : (hpRatio > 0.25 ? '#ffaa33' : '#ff4444');
-    ctx.fillRect(x - bw/2, y0, bw * hpRatio, bh);
-  }
+  ctx.moveTo(t.x - k, t.y); ctx.lineTo(t.x + k, t.y);
+  ctx.moveTo(t.x, t.y - k); ctx.lineTo(t.x, t.y + k);
+  ctx.stroke();
+  const bw = t.radius * 2.2, bh = 12;
+  ctx.fillStyle = 'rgba(0,0,0,0.65)';
+  ctx.fillRect(t.x - bw / 2, t.y - t.radius - 34, bw, bh);
+  const p = clamp(t.hp / t.maxHp, 0, 1);
+  ctx.fillStyle = p > 0.5 ? '#ff4444' : (p > 0.25 ? '#ff8844' : '#ffcc33');
+  ctx.fillRect(t.x - bw / 2 + 1, t.y - t.radius - 33, (bw - 2) * p, bh - 2);
 }
 
 function drawTurret(t) {
   ctx.beginPath();
-  ctx.arc(t.x, t.y, t.range, 0, Math.PI*2);
+  ctx.arc(t.x, t.y, t.range, 0, Math.PI * 2);
   ctx.fillStyle = t.jamTime > 0 ? 'rgba(100,255,180,0.08)' : 'rgba(255,140,70,0.05)';
   ctx.fill();
   ctx.strokeStyle = t.jamTime > 0 ? 'rgba(100,255,180,0.5)' : 'rgba(255,140,70,0.3)';
   ctx.lineWidth = Math.max(1, 1.5 / cam.zoom);
-  ctx.setLineDash([10, 10]); ctx.stroke(); ctx.setLineDash([]);
-
+  ctx.setLineDash([12, 12]); ctx.stroke(); ctx.setLineDash([]);
   ctx.save(); ctx.translate(t.x, t.y);
   ctx.fillStyle = 'rgba(0,0,0,0.35)';
   ctx.fillRect(-16, -11, 40, 30);
@@ -1527,61 +1976,121 @@ function drawTurret(t) {
   ctx.strokeRect(-20, -15, 40, 30);
   ctx.fillStyle = '#101418';
   ctx.fillRect(-18, -19, 9, 5); ctx.fillRect(9, -19, 9, 5);
-  ctx.fillRect(-18, 14, 9, 5);  ctx.fillRect(9, 14, 9, 5);
+  ctx.fillRect(-18, 14, 9, 5); ctx.fillRect(9, 14, 9, 5);
+  ctx.fillStyle = '#2a3038'; ctx.fillRect(-16, -10, 12, 20);
   ctx.fillStyle = '#2a3038';
-  ctx.fillRect(-16, -10, 12, 20);
-
-  ctx.fillStyle = '#2a3038';
-  ctx.beginPath(); ctx.arc(2, 0, 12, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(2, 0, 12, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = '#4a5058'; ctx.stroke();
   ctx.save(); ctx.rotate(t.angle);
   ctx.fillStyle = '#6a7278'; ctx.fillRect(0, -3, 30, 6);
   ctx.fillStyle = '#8a9298'; ctx.fillRect(26, -3, 5, 6);
-  ctx.restore();
-  ctx.restore();
-
+  ctx.restore(); ctx.restore();
   if (t.cooldown > 0) {
     const prog = 1 - t.cooldown / t.maxCooldown;
     ctx.strokeStyle = 'rgba(255,210,80,0.85)';
     ctx.lineWidth = Math.max(2, 3 / cam.zoom);
-    ctx.beginPath();
-    ctx.arc(t.x, t.y, 26, -Math.PI/2, -Math.PI/2 + Math.PI*2*prog);
-    ctx.stroke();
+    ctx.beginPath(); ctx.arc(t.x, t.y, 26, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * prog); ctx.stroke();
   }
 }
 
-function drawTarget() {
-  const t = G.target; if (!t) return;
-  const g = ctx.createRadialGradient(t.x, t.y, 0, t.x, t.y, t.radius*1.7);
-  g.addColorStop(0, 'rgba(255,70,70,0.20)');
-  g.addColorStop(1, 'rgba(255,70,70,0)');
-  ctx.fillStyle = g;
-  ctx.beginPath(); ctx.arc(t.x, t.y, t.radius*1.7, 0, Math.PI*2); ctx.fill();
-
-  ctx.fillStyle = '#26161a'; ctx.strokeStyle = '#c04040';
-  ctx.lineWidth = Math.max(2, 3 / cam.zoom);
-  ctx.beginPath(); ctx.arc(t.x, t.y, t.radius, 0, Math.PI*2); ctx.fill(); ctx.stroke();
-  ctx.beginPath(); ctx.arc(t.x, t.y, t.radius*0.55, 0, Math.PI*2); ctx.stroke();
-  ctx.strokeStyle = 'rgba(255,80,80,0.85)';
-  const k = t.radius * 0.85;
+function drawMOG(m) {
+  if (!m.alive) return;
+  // Радиус действия
   ctx.beginPath();
-  ctx.moveTo(t.x - k, t.y); ctx.lineTo(t.x + k, t.y);
-  ctx.moveTo(t.x, t.y - k); ctx.lineTo(t.x, t.y + k);
-  ctx.stroke();
+  ctx.arc(m.x, m.y, m.range, 0, Math.PI * 2);
+  ctx.strokeStyle = m.team === 'attack' ? 'rgba(255,120,60,0.18)' : 'rgba(100,220,150,0.22)';
+  ctx.lineWidth = Math.max(1, 1 / cam.zoom);
+  ctx.setLineDash([8, 12]); ctx.stroke(); ctx.setLineDash([]);
 
-  const bw = t.radius * 2.2, bh = 12;
-  ctx.fillStyle = 'rgba(0,0,0,0.65)';
-  ctx.fillRect(t.x - bw/2, t.y - t.radius - 30, bw, bh);
-  const p = clamp(t.hp / t.maxHp, 0, 1);
-  ctx.fillStyle = p > 0.5 ? '#ff4444' : (p > 0.25 ? '#ff8844' : '#ffcc33');
-  ctx.fillRect(t.x - bw/2 + 1, t.y - t.radius - 29, (bw - 2) * p, bh - 2);
+  ctx.save();
+  ctx.translate(m.x, m.y);
+  ctx.rotate(m.angle);
+  // Тень
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(-24 + 5, -14 + 5, 52, 30);
+  // Кузов
+  ctx.fillStyle = '#5a4a3a';
+  ctx.fillRect(-26, -13, 52, 26);
+  ctx.strokeStyle = '#2a1f15';
+  ctx.lineWidth = Math.max(1, 1.5 / cam.zoom);
+  ctx.strokeRect(-26, -13, 52, 26);
+  // Кабина
+  ctx.fillStyle = '#3a3028';
+  ctx.fillRect(8, -12, 18, 24);
+  ctx.fillStyle = '#7090a8';
+  ctx.fillRect(10, -10, 14, 20);
+  // Колёса
+  ctx.fillStyle = '#0a0a0a';
+  ctx.fillRect(-20, -17, 12, 5);
+  ctx.fillRect(-4, -17, 12, 5);
+  ctx.fillRect(-20, 12, 12, 5);
+  ctx.fillRect(-4, 12, 12, 5);
+  ctx.restore();
+  // Турель
+  ctx.save();
+  ctx.translate(m.x, m.y);
+  ctx.rotate(m.turretAngle);
+  ctx.fillStyle = '#2a2f36';
+  ctx.beginPath(); ctx.arc(0, 0, 11, 0, Math.PI * 2); ctx.fill();
+  ctx.strokeStyle = '#4a5058'; ctx.stroke();
+  ctx.fillStyle = '#6a7278'; ctx.fillRect(0, -3, 28, 6);
+  ctx.fillStyle = '#8a9298'; ctx.fillRect(25, -3, 4, 6);
+  ctx.restore();
+  // HP-бар
+  if (m.hp < m.maxHp) {
+    const bw = 44;
+    ctx.fillStyle = 'rgba(0,0,0,0.6)';
+    ctx.fillRect(m.x - bw / 2, m.y - 30, bw, 4);
+    ctx.fillStyle = m.team === 'attack' ? '#ff6644' : '#44cc88';
+    ctx.fillRect(m.x - bw / 2, m.y - 30, bw * (m.hp / m.maxHp), 4);
+  }
+}
+
+function drawDroneUAV(d) {
+  const bob = Math.sin(d.bob) * 1.5;
+  ctx.save(); ctx.translate(d.x, d.y + bob); ctx.rotate(d.angle);
+  ctx.fillStyle = 'rgba(120,200,255,0.45)';
+  ctx.beginPath(); ctx.ellipse(-22, 0, 12, 3.5, 0, 0, Math.PI * 2); ctx.fill();
+  let base = d.player ? '#8aa0b8' : '#b89a8a';
+  if (d.typeKey === 'heavy') base = d.player ? '#7a6a4a' : '#a08a6a';
+  if (d.typeKey === 'jammer') base = '#6ac8a0';
+  const body = d.hitFlash > 0 ? '#ffffff' : base;
+  ctx.fillStyle = body;
+  ctx.strokeStyle = '#2a3a4a';
+  ctx.lineWidth = Math.max(1, 1.6 / cam.zoom);
+  ctx.beginPath();
+  ctx.moveTo(20, 0); ctx.lineTo(-7, -18); ctx.lineTo(-15, -6);
+  ctx.lineTo(-15, 6); ctx.lineTo(-7, 18);
+  ctx.closePath(); ctx.fill(); ctx.stroke();
+  ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+  ctx.lineWidth = Math.max(1, 1 / cam.zoom);
+  ctx.beginPath(); ctx.moveTo(16, 0); ctx.lineTo(-10, 0); ctx.stroke();
+  ctx.fillStyle = d.hitFlash > 0 ? '#ffcc33' : (d.player ? '#3a7ec8' : '#c84a3a');
+  ctx.beginPath(); ctx.arc(15, 0, 3.5, 0, Math.PI * 2); ctx.fill();
+  if (d.typeKey === 'jammer') {
+    ctx.strokeStyle = `rgba(100,255,180,${0.3 + 0.3 * Math.sin(now() / 120)})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(0, 0, 30, 0, Math.PI * 2); ctx.stroke();
+  }
+  ctx.strokeStyle = 'rgba(230,230,230,0.75)';
+  ctx.lineWidth = Math.max(1, 1.5 / cam.zoom);
+  const pA = (now() / 25) % (Math.PI * 2);
+  const pLen = Math.abs(Math.cos(pA)) * 10;
+  ctx.beginPath(); ctx.moveTo(-19, -pLen); ctx.lineTo(-19, pLen); ctx.stroke();
+  ctx.restore();
+  if (d.hp < d.maxHp) {
+    const bw = 34;
+    ctx.fillStyle = 'rgba(0,0,0,0.55)';
+    ctx.fillRect(d.x - bw / 2, d.y - 30 + bob, bw, 4);
+    ctx.fillStyle = (d.hp / d.maxHp) > 0.5 ? '#44dd66' : ((d.hp / d.maxHp) > 0.25 ? '#ffaa33' : '#ff4444');
+    ctx.fillRect(d.x - bw / 2, d.y - 30 + bob, bw * (d.hp / d.maxHp), 4);
+  }
 }
 
 function drawWorld() {
   ctx.save(); applyCamera();
   drawTerrain();
   drawTarget();
-
   if (G.side === 'defense' && G.placement.active) {
     ctx.fillStyle = 'rgba(90,200,255,0.06)';
     ctx.fillRect(PLACE_ZONE.x1, PLACE_ZONE.y1,
@@ -1593,7 +2102,7 @@ function drawWorld() {
                    PLACE_ZONE.x2 - PLACE_ZONE.x1, PLACE_ZONE.y2 - PLACE_ZONE.y1);
     ctx.setLineDash([]);
   }
-
+  for (const m of G.mogs) drawMOG(m);
   for (const t of G.turrets) drawTurret(t);
 
   ctx.lineWidth = Math.max(1.5, 2 / cam.zoom);
@@ -1604,37 +2113,26 @@ function drawWorld() {
   }
   ctx.globalAlpha = 1;
 
-  for (const d of G.drones) {
-    if (!d.alive) continue;
-    const bob = Math.sin(d.bob) * 1.5;
-    drawUAV(d.x, d.y + bob, d.angle, 18, d.player, d.hitFlash, d.hp / d.maxHp, d.typeKey);
-  }
+  for (const d of G.drones) if (d.alive) drawDroneUAV(d);
   for (const p of G.particles) {
     ctx.globalAlpha = clamp(p.life / p.maxLife, 0, 1);
     ctx.fillStyle = p.color;
-    ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2); ctx.fill();
   }
   ctx.globalAlpha = 1;
-
-  // Цифры урона
   ctx.font = 'bold 16px -apple-system,sans-serif';
   ctx.textAlign = 'center';
   for (const dt of G.dmgTexts) {
     ctx.globalAlpha = clamp(dt.life / dt.maxLife, 0, 1);
     ctx.fillStyle = dt.color;
-    ctx.strokeStyle = 'rgba(0,0,0,0.7)';
-    ctx.lineWidth = 3;
-    ctx.strokeText('-'+dt.val, dt.x, dt.y);
-    ctx.fillText('-'+dt.val, dt.x, dt.y);
+    ctx.strokeStyle = 'rgba(0,0,0,0.7)'; ctx.lineWidth = 3;
+    ctx.strokeText('-' + dt.val, dt.x, dt.y);
+    ctx.fillText('-' + dt.val, dt.x, dt.y);
   }
   ctx.globalAlpha = 1;
-
   ctx.restore();
 }
 
-/* ============================================================
-   МИНИ-КАРТА
-   ============================================================ */
 function drawMinimap() {
   const mmW = 90;
   const mmH = mmW * (WORLD_H / WORLD_W);
@@ -1646,60 +2144,63 @@ function drawMinimap() {
   ctx.strokeStyle = 'rgba(120,150,180,0.5)'; ctx.lineWidth = 1;
   roundRect(ctx, mmX, mmY, mmW, mmH, 6); ctx.stroke();
   const sx = mmW / WORLD_W, sy = mmH / WORLD_H;
+  // Река
   ctx.strokeStyle = 'rgba(80,140,200,0.7)'; ctx.lineWidth = 1.5;
   ctx.beginPath();
-  for (let i = 0; i < terrain.riverPts.length; i++) {
-    const p = terrain.riverPts[i];
-    if (i === 0) ctx.moveTo(mmX + p.x*sx, mmY + p.y*sy);
-    else         ctx.lineTo(mmX + p.x*sx, mmY + p.y*sy);
+  for (let i = 0; i < terrain.river.length; i++) {
+    const p = terrain.river[i];
+    if (i === 0) ctx.moveTo(mmX + p.x * sx, mmY + p.y * sy);
+    else ctx.lineTo(mmX + p.x * sx, mmY + p.y * sy);
   }
   ctx.stroke();
+  // Дороги
+  ctx.strokeStyle = 'rgba(200,180,120,0.4)'; ctx.lineWidth = 0.8;
+  for (const r of terrain.roads) {
+    ctx.beginPath();
+    ctx.moveTo(mmX + r.pts[0].x * sx, mmY + r.pts[0].y * sy);
+    for (let i = 1; i < r.pts.length; i++)
+      ctx.lineTo(mmX + r.pts[i].x * sx, mmY + r.pts[i].y * sy);
+    ctx.stroke();
+  }
   if (G.target) {
     ctx.fillStyle = '#ff4444';
-    ctx.beginPath(); ctx.arc(mmX + G.target.x*sx, mmY + G.target.y*sy, 3, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(mmX + G.target.x * sx, mmY + G.target.y * sy, 3, 0, Math.PI * 2); ctx.fill();
   }
   ctx.fillStyle = '#ff8844';
-  for (const t of G.turrets) ctx.fillRect(mmX + t.x*sx - 1.5, mmY + t.y*sy - 1.5, 3, 3);
+  for (const t of G.turrets) ctx.fillRect(mmX + t.x * sx - 1.5, mmY + t.y * sy - 1.5, 3, 3);
+  for (const m of G.mogs) {
+    ctx.fillStyle = m.team === 'attack' ? '#ff6644' : '#44cc88';
+    ctx.fillRect(mmX + m.x * sx - 2, mmY + m.y * sy - 2, 4, 4);
+  }
   for (const d of G.drones) {
     if (!d.alive) continue;
     ctx.fillStyle = d.player ? '#5ac8ff' : '#ffaa33';
-    ctx.beginPath(); ctx.arc(mmX + d.x*sx, mmY + d.y*sy, 2, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(mmX + d.x * sx, mmY + d.y * sy, 2, 0, Math.PI * 2); ctx.fill();
   }
-  const halfW = W/2/cam.zoom, halfH = H/2/cam.zoom;
+  const halfW = W / 2 / cam.zoom, halfH = H / 2 / cam.zoom;
   ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1;
-  ctx.strokeRect(mmX + clamp(cam.x - halfW, 0, WORLD_W)*sx,
-                 mmY + clamp(cam.y - halfH, 0, WORLD_H)*sy,
-                 Math.min(halfW*2, WORLD_W)*sx,
-                 Math.min(halfH*2, WORLD_H)*sy);
+  ctx.strokeRect(mmX + clamp(cam.x - halfW, 0, WORLD_W) * sx,
+                 mmY + clamp(cam.y - halfH, 0, WORLD_H) * sy,
+                 Math.min(halfW * 2, WORLD_W) * sx,
+                 Math.min(halfH * 2, WORLD_H) * sy);
   ctx.restore();
 }
 
-/* ============================================================
-   HUD БОЯ
-   ============================================================ */
 function drawBattleHUD() {
-  // Верхняя панель
   ctx.fillStyle = 'rgba(0,0,0,0.6)';
   ctx.fillRect(0, 0, W, 52);
   ctx.font = 'bold 15px -apple-system,sans-serif';
   ctx.textBaseline = 'middle';
-
   const alive = G.drones.filter(d => d.alive).length;
-  ctx.textAlign = 'left';
-  ctx.fillStyle = '#fff';
-  let left;
-  if (G.side === 'attack') {
-    left = `БПЛА: ${alive}/${G.selectedUnits.length} · готово ${G.deployed}`;
-  } else {
-    left = `Целей: ${alive + (G.spawnQueue > 100 ? 0 : G.spawnQueue)}`;
-  }
-  ctx.fillText(left, 100, 26);
-
+  ctx.textAlign = 'left'; ctx.fillStyle = '#fff';
+  const left = G.side === 'attack'
+    ? `БПЛА: ${alive}/${G.selectedUnits.length}`
+    : `Целей: ${alive + (G.spawnQueue > 100 ? 0 : G.spawnQueue)}`;
+  ctx.fillText(left, 116, 26);
   ctx.textAlign = 'right';
   ctx.fillStyle = G.side === 'attack' ? '#5ac8ff' : '#ff8844';
   ctx.fillText(G.side === 'attack' ? 'АТАКА' : 'ОБОРОНА', W - 16, 26);
 
-  // HP цели
   if (G.target) {
     const bw = W * 0.55, bx = 16, by = 46;
     ctx.fillStyle = 'rgba(0,0,0,0.5)';
@@ -1709,23 +2210,21 @@ function drawBattleHUD() {
     roundRect(ctx, bx + 1, by + 1, (bw - 2) * p, 6, 3); ctx.fill();
   }
 
-  // Кнопки
   const btns = getBattleUI();
   ctx.textAlign = 'center';
-  // Зум-кнопки
-  for (const k of ['zoomIn','zoomOut','follow']) {
+  for (const k of ['zoomIn', 'zoomOut', 'follow']) {
     const b = btns[k]; if (!b) continue;
     const active = k === 'follow' && cam.follow;
     ctx.fillStyle = active ? 'rgba(90,200,255,0.35)' : 'rgba(20,30,40,0.75)';
-    ctx.beginPath(); ctx.arc(b.cx, b.cy, b.r, 0, Math.PI*2); ctx.fill();
+    ctx.beginPath(); ctx.arc(b.cx, b.cy, b.r, 0, Math.PI * 2); ctx.fill();
     ctx.strokeStyle = active ? '#5ac8ff' : 'rgba(150,180,210,0.6)';
     ctx.lineWidth = 2; ctx.stroke();
     ctx.fillStyle = '#e8f4ff';
     ctx.font = 'bold 22px -apple-system,sans-serif';
-    let label = k === 'zoomIn' ? '+' : k === 'zoomOut' ? '−' : '◎';
-    ctx.fillText(label, b.cx, b.cy + 1);
+    ctx.textBaseline = 'middle';
+    const lbl = k === 'zoomIn' ? '+' : k === 'zoomOut' ? '−' : '◎';
+    ctx.fillText(lbl, b.cx, b.cy + 1);
   }
-  // Кнопка запуска/огня
   if (btns.launch) {
     const can = G.deployed < G.selectedUnits.length;
     ctx.fillStyle = can ? '#2a5a3a' : '#2a2f36';
@@ -1733,36 +2232,34 @@ function drawBattleHUD() {
     ctx.strokeStyle = can ? '#66cc88' : 'rgba(120,140,160,0.35)';
     ctx.lineWidth = 2; ctx.stroke();
     ctx.fillStyle = can ? '#e8ffe8' : '#6a7078';
-    ctx.font = 'bold 16px -apple-system,sans-serif';
+    ctx.font = 'bold 15px -apple-system,sans-serif';
     const nk = G.selectedUnits[G.deployed];
-    const label = can ? ('▶ ' + (nk ? ATTACK_UNITS[nk].name : '')) : 'ВСЕ ВЫПУЩЕНЫ';
-    ctx.fillText(label, btns.launch.x + btns.launch.w/2, btns.launch.y + btns.launch.h/2);
+    const lbl = can ? ('▶ ' + (nk ? ATTACK_UNITS[nk].name : '')) : 'ВСЕ ВЫПУЩЕНЫ';
+    ctx.fillText(lbl, btns.launch.x + btns.launch.w / 2, btns.launch.y + btns.launch.h / 2);
   }
   if (btns.fire) {
     ctx.fillStyle = '#7a3a16';
     roundRect(ctx, btns.fire.x, btns.fire.y, btns.fire.w, btns.fire.h, 12); ctx.fill();
     ctx.strokeStyle = '#ff8844'; ctx.lineWidth = 2; ctx.stroke();
     ctx.fillStyle = '#ffeee0';
-    ctx.font = 'bold 16px -apple-system,sans-serif';
-    ctx.fillText('🔥 ОГОНЬ', btns.fire.x + btns.fire.w/2, btns.fire.y + btns.fire.h/2);
+    ctx.font = 'bold 15px -apple-system,sans-serif';
+    ctx.fillText('🔥 ОГОНЬ', btns.fire.x + btns.fire.w / 2, btns.fire.y + btns.fire.h / 2);
   }
-  // Кнопка "Назад"
   const m = btns.menu;
   ctx.fillStyle = 'rgba(20,30,45,0.85)';
   roundRect(ctx, m.x, m.y, m.w, m.h, 8); ctx.fill();
   ctx.strokeStyle = 'rgba(150,180,210,0.5)'; ctx.lineWidth = 1.5; ctx.stroke();
   ctx.fillStyle = '#e8f4ff';
   ctx.font = 'bold 13px -apple-system,sans-serif';
-  ctx.fillText('‹ МЕНЮ', m.x + m.w/2, m.y + m.h/2);
+  ctx.fillText('‹ МЕНЮ', m.x + m.w / 2, m.y + m.h / 2);
 
-  // Сообщение
   if (G.messageTime > 0) {
     ctx.globalAlpha = clamp(G.messageTime, 0, 1);
     ctx.textAlign = 'center';
     ctx.fillStyle = '#ffeebb';
-    ctx.font = 'bold 16px -apple-system,sans-serif';
+    ctx.font = 'bold 15px -apple-system,sans-serif';
     ctx.shadowColor = 'rgba(0,0,0,0.9)'; ctx.shadowBlur = 6;
-    ctx.fillText(G.message, W/2, H - 120);
+    ctx.fillText(G.message, W / 2, H - 130);
     ctx.shadowBlur = 0;
     ctx.globalAlpha = 1;
   }
@@ -1772,12 +2269,11 @@ function drawBattleHUD() {
     ctx.fillRect(0, 0, W, H);
     ctx.globalAlpha = 1;
   }
-
   drawMinimap();
 }
 
 /* ============================================================
-   ГЛАВНЫЙ ЦИКЛ
+   22. ГЛАВНЫЙ ЦИКЛ
    ============================================================ */
 let lastT = 0;
 function loop(t) {
@@ -1789,18 +2285,21 @@ function loop(t) {
   update(dt);
   ctx.clearRect(0, 0, W, H);
 
-  if (G.screen === 'menu')         drawMenu();
-  else if (G.screen === 'campaign')drawCampaign();
-  else if (G.screen === 'briefing')drawBriefing();
-  else if (G.screen === 'upgrades')drawUpgrades();
-  else if (G.screen === 'battle')  { drawWorld(); drawBattleHUD(); }
+  if (op.active) {
+    opDraw();
+  } else if (G.screen === 'menu') drawMenu();
+  else if (G.screen === 'campaign') drawCampaign();
+  else if (G.screen === 'briefing') drawBriefing();
+  else if (G.screen === 'upgrades') drawUpgrades();
+  else if (G.screen === 'battle') { drawWorld(); drawBattleHUD(); }
   else if (G.screen === 'victory') { drawWorld(); drawBattleHUD(); drawVictory(); }
+  else if (G.screen === 'opEnd') drawOpEnd();
 
   requestAnimationFrame(loop);
 }
 
 /* ============================================================
-   СТАРТ
+   23. СТАРТ
    ============================================================ */
 resize();
 loadSave();
@@ -1812,7 +2311,7 @@ document.addEventListener('gesturestart', (e) => e.preventDefault());
 document.addEventListener('visibilitychange', () => { if (!document.hidden) lastT = 0; });
 cvs.addEventListener('pointerdown', onDown, { passive: false });
 cvs.addEventListener('pointermove', onMove, { passive: false });
-cvs.addEventListener('pointerup',   onUp,   { passive: false });
+cvs.addEventListener('pointerup', onUp, { passive: false });
 cvs.addEventListener('pointercancel', (e) => { pointers.delete(e.pointerId); G.draggingTurret = null; });
 </script>
 </body>
